@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta content="width=device-width, initial-scale=1.0, user-scalable=no" name="viewport">
-<title>单词小怪兽 🐣 背单词</title>
+<title>团团英语大胃袋 🐣 背单词</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:linear-gradient(160deg,#fdf0f3 0%,#f5e6ee 45%,#fdf4e8 100%); min-height:100vh; }
@@ -173,7 +173,7 @@
 </head>
 <body>
 <div class="app">
-  <h1>🐣 单词小怪兽</h1>
+  <h1>🐣 团团英语大胃袋</h1>
   <p class="sub">每天一点点~积少成多~团团最棒啦~</p>
 
   <!-- 首页 -->
@@ -747,7 +747,7 @@ function resetToday(){uiConfirm('确定重置今日任务吗？\n今天已背/�
 
 /* ---------- 备份 / 搬家 ---------- */
 function exportBackup(){
- const data={v:1,app:'word-monster',exportedAt:dstr,words,wrongList,today,doneToday,task};
+ const data={v:1,app:'tuantuan-english-tummy',exportedAt:dstr,words,wrongList,today,doneToday,task};
  const s=JSON.stringify(data);
  const ta=$('backup-area');ta.classList.remove('hidden');ta.value=s;
  if(navigator.clipboard&&navigator.clipboard.writeText){
