@@ -158,11 +158,12 @@
   <!-- 首页 -->
   <div id="page-home">
     <div class="card" style="border:3px solid #f5d18a">
-      <h3 style="color:#c97b93; margin-bottom:12px">📅 今日任务</h3>
+      <h3 style="color:#c97b93; margin-bottom:12px">今日任务</h3>
       <div class="stats">
         <div class="stat"><b id="task-new">0/5</b><span>背新单词</span></div>
         <div class="stat"><b id="task-review">0</b><span>复习旧词</span></div>
         <div class="stat"><b id="stat-today">0</b><span>今日已学</span></div>
+        <div class="stat"><b id="stat-mastered">0</b><span>累计拼会</span></div>
       </div>
       <button class="btn b4" id="btn-task-new" onclick="startLearn()">🌱 背今天的 5 个新单词</button>
       <button class="btn b2" id="btn-task-review" onclick="startReview()">🔁 复习到期单词</button>
@@ -231,7 +232,6 @@
       <div class="cn-clue" id="s-clue"></div>
       <div style="text-align:center; margin:0 auto 12px" class="accent-row"><button class="speak-pill" onclick="speakSpell()">🔊 听发音</button><button class="accent-tag" onclick="toggleAccent()">🇺🇸 美音</button></div>
       <div style="display:flex; gap:8px; margin-bottom:14px">
-        <button class="btn b2" id="s-mode-keys" onclick="setSpellMode('keys')" style="margin:0; font-size:15px; padding:10px">🀫 打乱字母</button>
         <button class="btn b6" id="s-mode-type" onclick="setSpellMode('type')" style="margin:0; font-size:15px; padding:10px">⌨️ 自己输入</button>
       </div>
       <div class="slots" id="s-slots"></div>
@@ -297,7 +297,7 @@
 </div>
 
 <script>
-const LS_W='mw_words', LS_X='mw_wrong', LS_T='mw_today', LS_D='mw_done', LS_TASK='mw_task';
+const LS_W='mw_words', LS_X='mw_wrong', LS_T='mw_today', LS_D='mw_done', LS_TASK='mw_task', LS_M='mw_mastered';
 
 /* ---------- 数据存储：纯本地（localStorage），单机使用，无需登录 ---------- */
 const DAILY_NEW=5;                      // 每天新学单词数
@@ -308,10 +308,13 @@ let doneToday=JSON.parse(localStorage.getItem(LS_D)||'[]');
 let today=JSON.parse(localStorage.getItem(LS_T)||'{"date":"","count":0}');
 let task=JSON.parse(localStorage.getItem(LS_TASK)||'null');
 let range=JSON.parse(localStorage.getItem('mw_range')||'[]'); // [] = 全部单元
+let mastered=JSON.parse(localStorage.getItem(LS_M)||'[]');      // 累计拼会过的单词 en 列表（去重），length 即累计拼会数
 const dstr=new Date().toISOString().slice(0,10);
 if(today.date!==dstr){today={date:dstr,count:0};doneToday=[];save();}
 if(!task||task.date!==dstr)task={date:dstr,newDone:[],reviewDone:[]};
-function save(){localStorage.setItem(LS_W,JSON.stringify(words));localStorage.setItem(LS_X,JSON.stringify(wrongList));localStorage.setItem(LS_T,JSON.stringify(today));localStorage.setItem(LS_D,JSON.stringify(doneToday));localStorage.setItem(LS_TASK,JSON.stringify(task));localStorage.setItem('mw_range',JSON.stringify(range));}
+function save(){localStorage.setItem(LS_W,JSON.stringify(words));localStorage.setItem(LS_X,JSON.stringify(wrongList));localStorage.setItem(LS_T,JSON.stringify(today));localStorage.setItem(LS_D,JSON.stringify(doneToday));localStorage.setItem(LS_TASK,JSON.stringify(task));localStorage.setItem('mw_range',JSON.stringify(range));localStorage.setItem(LS_M,JSON.stringify(mastered));}
+// 标记一个单词已拼会（去重累加）
+function markMastered(en){if(!mastered.includes(en))mastered.push(en);}
 // 背诵范围：range 为空 = 全部；否则只学所选单元（含未标单元的手工导入词不参与筛选后学习）
 function inRange(w){return range.length===0||(w.unit&&range.includes(w.unit));}
 function rangeWords(list){return list.filter(inRange);}
@@ -600,6 +603,7 @@ function go(p){document.querySelectorAll('[id^=page-]').forEach(e=>e.classList.a
 
 function renderHome(){
  $('stat-total').textContent=words.length;$('stat-wrong').textContent=wrongList.length;$('stat-today').textContent=today.count;
+ $('stat-mastered').textContent=mastered.length;
  const dn=task.newDone.length, dr=rangeWords(dueWords()).length;
  $('task-new').textContent=Math.min(dn,DAILY_NEW)+'/'+DAILY_NEW;
  $('task-review').textContent=dr;
@@ -824,7 +828,7 @@ function speakQ(){if(qCur)speak(qCur.en);}
 
 /* ---------- 拼写 ---------- */
 let spWord=null,spInput=[],spKeys=[],spellQueue=[],spellIdx=0,spellLetters=[],spellLocked=false,keyOrder=[];
-let spMode=localStorage.getItem('mw_spellmode')||'keys';  // 'keys'=打乱字母按键  'type'=自己输入
+let spMode=localStorage.getItem('mw_spellmode')||'type';  // 独立拼写闯关默认'自己输入'（已去掉'打乱字母'）；背新词 drill 内部会按遍数自动切换
 
 /* ---------- 背新词专属拼写闯关（记住了 → 3 遍打乱字母 + 3 遍自己输入） ---------- */
 // drill = { word, round, from }  round: 0..5  (0-2 打乱字母, 3-5 自己输入)
@@ -864,8 +868,8 @@ function showSpellDrill(){spWord=spellDrill.word;spellLetters=spWord.en.split(''
   dot.textContent=drillRoundMode(i)==='type'?'输':'拼';
   steps.appendChild(dot);}
  // 隐藏模式切换按钮（闯关内自动切换）
- $('s-mode-keys').style.display='none';
- $('s-mode-type').style.display='none';
+ const mk=$('s-mode-keys');if(mk)mk.style.display='none';
+ const mt=$('s-mode-type');if(mt)mt.style.display='none';
  // 设置当前模式对应的输入区
  $('s-keys').style.display=(spMode==='keys')?'flex':'none';
  $('s-keys').innerHTML='';
@@ -892,6 +896,7 @@ function finishDrill(){const w=spellDrill.word;
   w.stage=Math.min((w.stage||0)+1,INTERVALS.length-1);w.due=addDays(dstr,INTERVALS[w.stage]);
   doneToday.push(w.en);today.count++;task.reviewDone.push(w.en);
  }
+ markMastered(w.en);
  save();confetti();
  // 撒花 + 庆祝语 + 显示"下一个"按钮，等待点击后进入下一个单词
  $('s-feedback').textContent='🎉 '+w.en+' = '+w.cn+' 拼写全部过关！';
@@ -910,13 +915,12 @@ function spellDrillWrong(){const w=spellDrill.word;
 function spellBack(){drillDone=false;$('s-celebrate').classList.add('hidden');if(spellDrill){spellDrill=null;go('learn');showCard();}else{go('home');}}
 
 function setSpellMode(m){spMode=m;localStorage.setItem('mw_spellmode',m);if(spWord)showSpell(true);}
-function startSpell(){spellDrill=null; // 独立拼写闯关：不走"记住了"的 drill 流程
+function startSpell(){spellDrill=null; spMode='type'; // 独立拼写闯关：去掉打乱字母，统一自己输入
  const pool=rangeWords(words).filter(w=>doneToday.includes(w.en)||Math.random()<0.6);
  const list=shuffle(pool.length?pool:rangeWords(words));if(!list.length){alert(range.length?'所选单元里没有可以拼写的单词哦！':'词库是空的，先导入单词吧！');go(range.length?'home':'manage');return;}
  spellQueue=list;spellIdx=0;go('spell');showSpell();}
 function showSpell(keepMode){spWord=spellQueue[spellIdx];spellLetters=spWord.en.split('');
  spInput=[];spKeys=spellLetters.map((_,i)=>i);
- keyOrder=shuffle(spKeys.map((_,i)=>i)); // 本题字母按键的固定打乱顺序
  spellLocked=false;
  $('s-clue').textContent=emojiFor(spWord.en)+' 「 '+spWord.cn+' 」的英文是？';
  $('s-feedback').textContent='';$('s-next').classList.add('hidden');
@@ -924,21 +928,13 @@ function showSpell(keepMode){spWord=spellQueue[spellIdx];spellLetters=spWord.en.
  $('s-hint').classList.remove('hidden');
  $('s-next').textContent='下一题 →';
  $('spell-progress').style.width=(spellIdx/spellQueue.length*100)+'%';
- // 独立拼写：恢复模式切换按钮与隐藏 drill 指示
- $('s-mode-keys').style.display='flex';
- $('s-mode-type').style.display='flex';
+ // 独立拼写：只保留自己输入模式
  $('s-drill-bar').classList.add('hidden');
  $('s-drill-steps').classList.add('hidden');
- // 模式按钮高亮
- $('s-mode-keys').style.outline=spMode==='keys'?'4px solid #f5d18a':'none';
- $('s-mode-type').style.outline=spMode==='type'?'4px solid #f5d18a':'none';
- $('s-keys').style.display=(spMode==='keys')?'flex':'none';
- $('s-keys').innerHTML='';
  const ti=$('s-typing');
- ti.style.display=(spMode==='type')?'block':'none';
- ti.value='';if(spMode==='type')setTimeout(()=>ti.focus(),100);
- renderSlots();
- if(spMode==='keys')renderKeys();}
+ ti.style.display='block';
+ ti.value='';setTimeout(()=>ti.focus(),100);
+ renderSlots();}
 // 当前已拼出的内容
 function getGuess(){return spMode==='keys'?spInput.map(i=>spellLetters[i]).join(''):$('s-typing').value.toLowerCase();}
 function renderSlots(){const arr=$('s-slots');arr.innerHTML='';
@@ -966,8 +962,8 @@ function checkSpell(){const guess=getGuess();
    renderSlots();if(spMode==='keys')renderKeys();
    setTimeout(function(){spellDrillCorrect();},500);return;}
   fb.textContent='🎉 拼对啦！'+spWord.en+' = '+spWord.cn;
-  wrongList=wrongList.filter(x=>x.en!==spWord.en);doneToday.push(spWord.en);today.count++;save();confetti();speak(spWord.en);$('s-next').classList.remove('hidden');
-  if(spMode==='keys')renderKeys();}
+  markMastered(spWord.en);
+  wrongList=wrongList.filter(x=>x.en!==spWord.en);doneToday.push(spWord.en);today.count++;save();confetti();speak(spWord.en);$('s-next').classList.remove('hidden');}
  else{if(spellDrill){ // 闯关模式拼错：计入错词本，清空重来，直到拼对
    spellDrillWrong();
    fb.textContent='❌ 拼错了，已加入错词本，再试一次！';
