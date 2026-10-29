@@ -1140,7 +1140,10 @@ function hwDoRecognize(){
  const pred=hwPredict();
  if(!pred){ hwHint('再写清楚一点哦～'); return; }
  const {ch,score,cands}=pred;
- if(score<0.25){ // 置信度低：不自动填，显示候选让用户点选（点选=填入当前空格）
+ // 易混淆字母（m/e/f/n/u 及弧线字母）更容易认错，自动填入门槛更高，更多走候选确认
+ const HARD='menufocrase';
+ const thr = HARD.indexOf(ch)>=0 ? 0.55 : 0.25;
+ if(score<thr){ // 置信度低：不自动填，显示候选让用户点选（点选=填入当前空格）
   hwShowCands(cands);
   hwHint('没太看清，点下面候选或重写');
   return;
@@ -1160,10 +1163,12 @@ function hwPredict(){
   for(let i=36;i<62;i++){ cands.push({ch:HW_LABELS[i],score:proba[i]}); }
   cands.sort((a,b)=>b.score-a.score);
  const top=cands[0];
- // m/n 形状极像，模型常混淆：用"竖直方向峰顶数"辅助仲裁（n 一个峰、m 两个峰）
+ // m/n/u 形状极像，模型常混淆：用"竖直方向转向次数+方向"辅助仲裁
  let ch=hwMnFix(top.ch, cands[1]?cands[1].ch:'');
  // o/c/r 等弧线字母手写难区分：用闭合度/宽高比辅助仲裁
  ch=hwOcrFix(ch, cands[1]?cands[1].ch:'', cands[2]?cands[2].ch:'');
+ // e/f 竖线横线字母：用横向笔画占比辅助仲裁
+ ch=hwEfFix(ch, cands[1]?cands[1].ch:'', cands[2]?cands[2].ch:'');
  return {ch:ch, score:top.score, cands:cands.slice(0,3)};
  }catch(e){ return null; }
 }
@@ -1184,13 +1189,18 @@ function hwTurnCount(){
  }
  return turns;
 }
-// m/n 仲裁：top1 是 m 或 n，且 top2 是另一个时，用 y 方向转向次数判断（m≈3、n≈1）
+// m/n/u 仲裁：用 y 方向转向次数区分（可靠信号）
+//  - m：3 次转向（上→下→上→下，两个拱）
+//  - n/u：1 次转向（一个拱/谷）。n 与 u 是镜像，手写轨迹几乎无法可靠区分，
+//    这里不强行用几何区分，避免误判；由候选条兜底让用户点选。
 function hwMnFix(ch, second){
- if((ch==='n'&&second==='m')||(ch==='m'&&second==='n')){
-  const turns=hwTurnCount();
-  if(turns>=2)return 'm';
-  if(turns===1)return 'n';
- }
+ const set=[ch,second].filter(Boolean);
+ const hasM=set.includes('m'), hasN=set.includes('n'), hasU=set.includes('u');
+ if(!((hasM&&hasN)||(hasM&&hasU)||(hasN&&hasU)))return ch;
+ const turns=hwTurnCount();
+ // m 需要 2 次及以上转向（两个拱）；n/u 通常 1 次转向
+ if(hasM && turns>=2)return 'm';
+ if((hasN||hasU) && turns===1 && hasM)return (hasN?'n':'u');
  return ch;
 }
 // ---- 几何特征提取（基于手写轨迹原始坐标，用于 o/c/r 等易混淆字母仲裁）----
@@ -1231,6 +1241,27 @@ function hwOcrFix(ch, second, third){
   if(g.close>0.42)return 'c';       // 首尾明显分开 → c
  }
  // a vs o：a 通常有开口或底部带钩，o 更圆润；难以可靠区分时不强行改
+ return ch;
+}
+// e/f 仲裁：e 有横向封闭环（横向笔画长、整体偏宽），f 是竖线+短横杠（瘦高、横向笔画短）
+function hwEfFix(ch, second, third){
+ const set=[ch,second,third].filter(Boolean);
+ if(!set.includes('e')&&!set.includes('f'))return ch;
+ const g=hwGeometry(); if(!g)return ch;
+ // 横向笔画占比：所有相邻点中，水平方向移动的累计长度 / 总路径长度
+ let hx=0, hy=0;
+ hwStrokes.forEach(s=>{
+  for(let i=1;i<s.length;i++){
+   const dx=Math.abs(s[i].x-s[i-1].x), dy=Math.abs(s[i].y-s[i-1].y);
+   hx+=dx; hy+=dy;
+  }
+ });
+ const hRatio = (hx+hy)>0 ? hx/(hx+hy) : 0.5;
+ // e：横向笔画占比高（多横线）；f：竖向为主（横向占比低）
+ if(set.includes('e')&&set.includes('f')){
+  if(hRatio>0.45 && g.ratio>0.55)return 'e';
+  if(hRatio<0.35 && g.ratio<0.6)return 'f';
+ }
  return ch;
 }
 // 手写轨迹 → 28x28 float32（EMNIST 输入约定：黑底白字、0-255 灰度、转置）
@@ -1721,7 +1752,9 @@ function battleDoRecognize(){
  const pred=battlePredict();
  if(!pred){battleFeedback('再写清楚一点哦～');return;}
  const {ch,score,cands}=pred;
- if(score<0.25){ battleShowCands(cands); battleFeedback('没太看清，点下面候选或重写'); return; }
+ const HARD='menufocrase';
+ const thr = HARD.indexOf(ch)>=0 ? 0.55 : 0.25;
+ if(score<thr){ battleShowCands(cands); battleFeedback('没太看清，点下面候选或重写'); return; }
  battleShowCands([]);
  battleCommit(ch);
 }
