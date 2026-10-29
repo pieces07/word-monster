@@ -169,7 +169,7 @@
     .hw-cand { width:52px; height:52px; font-size:26px; }
   }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<script src="emnist_weights.js"></script>
 </head>
 <body>
 <div class="app">
@@ -863,9 +863,6 @@ const HW_ALPH='abcdefghijklmnopqrstuvwxyz';
 const HW_LABELS=['0','1','2','3','4','5','6','7','8','9',
  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
  'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'];
-let hwSession=null;                     // ONNX InferenceSession
-let hwSessionReady=false;               // 模型是否已加载
-let hwLoading=false;                    // 是否正在加载
 let hwStrokes=[];                       // 当前手写的多段轨迹，每段是 [{x,y},...]
 let hwCur=null;                         // 当前正在画的这一段
 let hwCanvas=null,hwCtx=null;
@@ -874,18 +871,75 @@ let hwGuessText='';                     // 当前已填入的字母
 let hwBound=false;
 let hwTimer=null;                       // 抬笔后的延迟识别计时器
 
-// 预加载模型（页面打开后、进入手写前就后台加载，减少等待）
-function hwLoadModel(){
- if(hwLoading||hwSessionReady)return;
- if(typeof ort==='undefined'){ // onnxruntime 未加载（CDN 失败）
-  hwHint('⚠️ 识别组件加载失败，请用「⌨️键盘」输入');
-  return;
+/* ---- 纯 JS 前向推理（EMNIST 权重已内嵌 emnist_weights.js，零外部依赖）---- */
+let _hwW=null;                          // 解码后的权重（Float32Array + 形状）
+function hwWeights(){
+ if(_hwW)return _hwW;
+ const d=window.EMNIST_W; if(!d)return null;
+ const sh=d._shapes;
+ function dec(k){ const b64=d[k]; const bin=atob(b64); const u=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  return new Float32Array(u.buffer); }
+ _hwW={sh:sh,
+  c1w:dec('c1w'),bn1w:dec('bn1w'),bn1b:dec('bn1b'),bn1m:dec('bn1m'),bn1v:dec('bn1v'),
+  c2w:dec('c2w'),bn2w:dec('bn2w'),bn2b:dec('bn2b'),bn2m:dec('bn2m'),bn2v:dec('bn2v'),
+  fc1w:dec('fc1w'),fc1b:dec('fc1b'),bn3w:dec('bn3w'),bn3b:dec('bn3b'),bn3m:dec('bn3m'),bn3v:dec('bn3v'),
+  fc2w:dec('fc2w')};
+ return _hwW;
+}
+// 模型前向：输入 28x28 Float32Array（0-255 灰度，已转置），返回 62 类 logits（Float32Array）
+function hwForward(inp){
+ const W=hwWeights(); if(!W)return null;
+ const eps=1e-5;
+ function bn(x,w,b,m,v){ return (x-m)/Math.sqrt(v+eps)*w+b; }
+ // Conv1: 1->24, 3x3, no pad → 26x26
+ const o1=new Float32Array(24*26*26);
+ for(let oc=0;oc<24;oc++){ const wOff=oc*9;
+  for(let i=0;i<26;i++)for(let j=0;j<26;j++){
+   let s=0;
+   for(let a=0;a<3;a++)for(let b=0;b<3;b++){ s+=W.c1w[wOff+a*3+b]*inp[(i+a)*28+(j+b)]; }
+   o1[oc*26*26+i*26+j]=s;
+  }}
+ // MaxPool 2x2 → 13x13，再 BN1+ReLU
+ const x1=new Float32Array(24*13*13);
+ for(let oc=0;oc<24;oc++)for(let i=0;i<13;i++)for(let j=0;j<13;j++){
+  const base=oc*26*26;
+  const m=Math.max(o1[base+(2*i)*26+(2*j)],o1[base+(2*i)*26+(2*j+1)],o1[base+(2*i+1)*26+(2*j)],o1[base+(2*i+1)*26+(2*j+1)]);
+  const v=bn(m,W.bn1w[oc],W.bn1b[oc],W.bn1m[oc],W.bn1v[oc]);
+  x1[oc*13*13+i*13+j]=v>0?v:0;
  }
- hwLoading=true;
- ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
- ort.InferenceSession.create('./EMNIST.onnx',{executionProviders:['wasm']})
-  .then(s=>{hwSession=s;hwSessionReady=true;hwLoading=false;})
-  .catch(e=>{hwLoading=false;hwHint('⚠️ 识别模型加载失败，请用「⌨️键盘」输入');});
+ // Conv2: 24->32, 3x3, no pad → 11x11
+ const o2=new Float32Array(32*11*11);
+ for(let oc=0;oc<32;oc++){ const wOff=oc*24*9;
+  for(let i=0;i<11;i++)for(let j=0;j<11;j++){
+   let s=0;
+   for(let ic=0;ic<24;ic++){ const icOff=ic*13*13;
+    for(let a=0;a<3;a++)for(let b=0;b<3;b++){ s+=W.c2w[wOff+ic*9+a*3+b]*x1[icOff+(i+a)*13+(j+b)]; } }
+   o2[oc*11*11+i*11+j]=s;
+  }}
+ // MaxPool 2x2 → 5x5，再 BN2+ReLU
+ const x2=new Float32Array(32*5*5);
+ for(let oc=0;oc<32;oc++)for(let i=0;i<5;i++)for(let j=0;j<5;j++){
+  const base=oc*11*11;
+  const m=Math.max(o2[base+(2*i)*11+(2*j)],o2[base+(2*i)*11+(2*j+1)],o2[base+(2*i+1)*11+(2*j)],o2[base+(2*i+1)*11+(2*j+1)]);
+  const v=bn(m,W.bn2w[oc],W.bn2b[oc],W.bn2m[oc],W.bn2v[oc]);
+  x2[oc*5*5+i*5+j]=v>0?v:0;
+ }
+ // Flatten 800 → Gemm 800→256（fc1w [256,800]）→ BN3+ReLU
+ const g=new Float32Array(256);
+ for(let i=0;i<256;i++){ let s=W.fc1b[i];
+  const wOff=i*800;
+  for(let j=0;j<800;j++)s+=W.fc1w[wOff+j]*x2[j];
+  const v=bn(s,W.bn3w[i],W.bn3b[i],W.bn3m[i],W.bn3v[i]);
+  g[i]=v>0?v:0;
+ }
+ // MatMul 256→62（fc2w [256,62]）
+ const logits=new Float32Array(62);
+ for(let o=0;o<62;o++){ let s=0;
+  for(let i=0;i<256;i++)s+=W.fc2w[i*62+o]*g[i];
+  logits[o]=s;
+ }
+ return logits;
 }
 function hwHint(msg){const h=$('s-hw-hint');if(h)h.textContent=msg;}
 
@@ -898,7 +952,7 @@ function hwInit(){
  hwCtx.lineWidth=Math.max(8,w*0.022); hwCtx.lineCap='round'; hwCtx.lineJoin='round';
  hwCtx.strokeStyle='#c97b93';
  if(!hwBound){bindHW(hwCanvas);hwBound=true;}
- hwLoadModel();
+ if(window.EMNIST_W)hwWeights();   // 首次进入即解码权重（同步，很快）
 }
 function bindHW(cv){
  cv.addEventListener('mousedown',e=>{hwPenDown(e.offsetX,e.offsetY);e.preventDefault();});
@@ -925,15 +979,11 @@ function hwPenUp(){
  if(hwTimer)clearTimeout(hwTimer);
  hwTimer=setTimeout(()=>{hwTimer=null; hwDoRecognize();},800);
 }
-// 真正执行识别（异步）
-async function hwDoRecognize(){
+// 真正执行识别（同步，纯 JS 推理很快）
+function hwDoRecognize(){
  if(spellLocked)return;
- if(!hwSessionReady){ // 模型还没好，提示稍候
-  hwLoadModel();
-  hwHint('⏳ 识别模型加载中，稍等再写…');
-  return;
- }
- const pred=await hwPredict();
+ if(!window.EMNIST_W){ hwHint('⚠️ 识别组件加载失败，请用「⌨️键盘」输入'); return; }
+ const pred=hwPredict();
  if(!pred){ hwHint('再写清楚一点哦～'); return; }
  const {ch,score,cands}=pred;
  if(score<0.25){ // 置信度低：不自动填，显示候选让用户点选（点选=填入当前空格）
@@ -946,14 +996,10 @@ async function hwDoRecognize(){
  hwCommit(ch);
 }
 // 预处理 + 推理，返回 {ch, score, cands:[{ch,score}...]}
-async function hwPredict(){
+function hwPredict(){
  const bmp=hwRasterize28(); if(!bmp)return null;
- const input=new ort.Tensor('float32',bmp,[1,1,28,28]);
  try{
-  const feeds={};
-  feeds[hwInputName()]=input;
-  const out=await hwSession.run(feeds);
-  const logits=out[hwOutputName()].data;
+  const logits=hwForward(bmp); if(!logits)return null;
   const proba=hwSoftmax(Array.from(logits));
   // 只在小写字母（索引 36..61）里取 top 候选
   const cands=[];
@@ -991,10 +1037,6 @@ function hwMnFix(ch, second){
  }
  return ch;
 }
-// 输入/输出张量名（探测一次）
-let _hwInName=null,_hwOutName=null;
-function hwInputName(){ if(!_hwInName)_hwInName=hwSession.inputNames[0]||'input'; return _hwInName; }
-function hwOutputName(){ if(!_hwOutName)_hwOutName=hwSession.outputNames[0]||'output'; return _hwOutName; }
 // 手写轨迹 → 28x28 float32（EMNIST 输入约定：黑底白字、0-255 灰度、转置）
 function hwRasterize28(){
  if(!hwStrokes.length)return null;
