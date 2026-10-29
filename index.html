@@ -475,15 +475,42 @@ function syncAccentUI(){
  document.querySelectorAll('.accent-tag').forEach(el=>{el.textContent=ACCENT==='us'?'🇺🇸 美音':'🇬🇧 英音';});
 }
 let _spkAudio=null;
+function _mkAudio(){
+ if(!_spkAudio){
+  _spkAudio=document.createElement('audio');
+  _spkAudio.preload='auto';
+  _spkAudio.setAttribute('playsinline','');
+  _spkAudio.setAttribute('webkit-playsinline','');
+ }
+ return _spkAudio;
+}
+function _playUrl(url){
+ try{
+  const a=_mkAudio();
+  a.pause();
+  let started=false;
+  const go=()=>{if(started)return;started=true;const p=a.play();if(p&&p.catch)p.catch(()=>{});};
+  a.oncanplay=go;
+  a.onloadeddata=go;
+  a.onerror=()=>{};
+  a.src=url;
+  a.load();
+  setTimeout(go,150);
+ }catch(e){}
+}
+/* 单词/短语发音：有道词典真人发音（type=1 英音 / type=2 美音） */
 function speak(t){
  if(!t)return;
  const type=ACCENT==='us'?'2':'1';
  const url='https://dict.youdao.com/dictvoice?audio='+encodeURIComponent(t)+'&type='+type;
- try{
-  if(_spkAudio){_spkAudio.pause();_spkAudio=null;}
-  _spkAudio=new Audio(url);
-  _spkAudio.play().catch(()=>{});
- }catch(e){}
+ _playUrl(url);
+}
+/* 整句发音：百度翻译 TTS（有道读不了长句，百都能读任意句子，国内直连，lan=en 美音 / lan=uk 英音） */
+function speakSentence(t){
+ if(!t)return;
+ const lan=ACCENT==='us'?'en':'uk';
+ const url='https://fanyi.baidu.com/gettts?lan='+lan+'&text='+encodeURIComponent(t)+'&spd=3&source=web';
+ _playUrl(url);
 }
 function confetti(){const e=['🎉','⭐','🌈','🎊','💖'];for(let i=0;i<14;i++){const s=document.createElement('div');s.className='confetti';s.textContent=e[i%e.length];s.style.left=Math.random()*95+'vw';s.style.animationDelay=Math.random()*0.6+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),3000);}}
 
@@ -942,7 +969,7 @@ function showDlg(){dlgLocked=false;const p=dlgQueue[dlgIdx];dlgCur=p;
    $('dlg-next').classList.remove('hidden');};
   box.appendChild(b);});
 }
-function speakDlg(){if(dlgCur)speak(dlgCur.en);}
+function speakDlg(){if(dlgCur)speakSentence(dlgCur.en);}
 function nextDlg(){dlgIdx++;if(dlgIdx>=dlgQueue.length){uiToast('对话练习完成！你太棒啦 💬🎉');go('home');}else showDlg();}
 
 /* ---------- 错词本渲染 ---------- */
