@@ -960,8 +960,36 @@ async function hwPredict(){
   for(let i=36;i<62;i++){ cands.push({ch:HW_LABELS[i],score:proba[i]}); }
   cands.sort((a,b)=>b.score-a.score);
   const top=cands[0];
-  return {ch:top.ch, score:top.score, cands:cands.slice(0,3)};
+  // m/n 形状极像，模型常混淆：用"竖直方向峰顶数"辅助仲裁（n 一个峰、m 两个峰）
+  const ch=hwMnFix(top.ch, cands[1]?cands[1].ch:'');
+  return {ch:ch, score:top.score, cands:cands.slice(0,3)};
  }catch(e){ return null; }
+}
+// 数手写轨迹竖直方向的"转向"次数（y 上下折返）：n 一次（上→下）、m 三次（上→下→上→下）
+function hwTurnCount(){
+ if(!hwStrokes.length)return 0;
+ const ys=[]; hwStrokes.forEach(s=>s.forEach(p=>ys.push(p.y)));
+ if(ys.length<5)return 0;
+ // 计算相邻点 y 差值，带死区（忽略微小抖动），去 0 后数方向翻转次数
+ const dead=2;
+ let last=0, turns=0;
+ for(let i=1;i<ys.length;i++){
+  const d=ys[i]-ys[i-1];
+  const dir = d>dead?1 : (d<-dead?-1:0);
+  if(dir===0)continue;
+  if(last!==0 && dir!==last)turns++;
+  last=dir;
+ }
+ return turns;
+}
+// m/n 仲裁：top1 是 m 或 n，且 top2 是另一个时，用 y 方向转向次数判断（m≈3、n≈1）
+function hwMnFix(ch, second){
+ if((ch==='n'&&second==='m')||(ch==='m'&&second==='n')){
+  const turns=hwTurnCount();
+  if(turns>=2)return 'm';
+  if(turns===1)return 'n';
+ }
+ return ch;
 }
 // 输入/输出张量名（探测一次）
 let _hwInName=null,_hwOutName=null;
