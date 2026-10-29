@@ -148,6 +148,26 @@
   @media (min-width:1024px){
     .app { max-width:860px; }
   }
+  /* ---------- 手写输入 ---------- */
+  .hw-wrap { display:none; flex-direction:column; gap:10px; margin:6px 0 16px; }
+  .hw-canvas {
+    display:block; width:100%; height:180px; margin:0 auto;
+    background:#fffdfb; border:3px dashed #f2c4a0; border-radius:20px;
+    cursor:crosshair; touch-action:none; -webkit-user-select:none; user-select:none;
+  }
+  .hw-hint { text-align:center; font-size:13px; color:#c0a098; }
+  .hw-cands { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; min-height:42px; }
+  .hw-cand { width:44px; height:44px; border-radius:12px; border:2px solid #f2dde3; background:#fff; font-size:22px; font-weight:bold; color:#6b5a5e; cursor:pointer; }
+  .hw-cand.sel { border-color:#f2a7c1; background:#fdeef3; color:#c97b93; }
+  .hw-ctrl { display:flex; gap:8px; justify-content:center; }
+  .hw-ctrl button { border:none; border-radius:14px; padding:11px 16px; font-size:15px; font-weight:bold; cursor:pointer; color:#fff; }
+  .hw-clear { background:linear-gradient(135deg,#f2a7c1,#e88fb0); }
+  .hw-del { background:linear-gradient(135deg,#c9b8e0,#b5a0d0); }
+  .hw-kbd { background:linear-gradient(135deg,#a8d4c8,#8fc4b4); color:#fff !important; }
+  @media (min-width:900px){
+    .hw-canvas { height:220px; }
+    .hw-cand { width:52px; height:52px; font-size:26px; }
+  }
 </style>
 </head>
 <body>
@@ -231,11 +251,18 @@
       <div class="drill-steps hidden" id="s-drill-steps"></div>
       <div class="cn-clue" id="s-clue"></div>
       <div style="text-align:center; margin:0 auto 12px" class="accent-row"><button class="speak-pill" onclick="speakSpell()">🔊 听发音</button><button class="accent-tag" onclick="toggleAccent()">🇺🇸 美音</button></div>
-      <div style="display:flex; gap:8px; margin-bottom:14px">
-        <button class="btn b6" id="s-mode-type" onclick="setSpellMode('type')" style="margin:0; font-size:15px; padding:10px">⌨️ 自己输入</button>
-      </div>
       <div class="slots" id="s-slots"></div>
       <input autocapitalize="off" autocomplete="off" autocorrect="off" class="hidden" id="s-typing" placeholder="在这里输入字母…" spellcheck="false" style="text-align:center; font-size:22px; letter-spacing:3px; text-transform:lowercase">
+      <div class="hw-wrap" id="s-hw-wrap">
+        <div class="hw-hint" id="s-hw-hint">👆 用手指在下面写一个字母</div>
+        <canvas class="hw-canvas" id="s-hw" width="420" height="180"></canvas>
+        <div class="hw-cands" id="s-hw-cands"></div>
+        <div class="hw-ctrl">
+          <button type="button" class="hw-clear" id="s-hw-clear" onclick="hwClear()">✏️ 重写</button>
+          <button type="button" class="hw-del" id="s-hw-del" onclick="hwDel()">⌫ 退一格</button>
+          <button type="button" class="hw-kbd" id="s-hw-kbd" onclick="hwToggleKbd()">⌨️ 键盘</button>
+        </div>
+      </div>
       <div class="keys" id="s-keys"></div>
       <div class="feedback" id="s-feedback"></div>
       <div class="celebrate hidden" id="s-celebrate">🎉 团团真棒！🎉</div>
@@ -828,9 +855,182 @@ function answerQuiz(btn,o,w){if(quizLocked)return;quizLocked=true;
 function nextQuiz(){quizIdx++;if(quizIdx>=quizQueue.length){alert('测验完成！成绩：本轮共 '+quizQueue.length+' 题 🎉');go('home');}else showQuiz();}
 function speakQ(){if(qCur)speak(qCur.en);}
 
+/* ---------- 手写字母识别（随屏手写，离线零依赖） ---------- */
+// 思路：手指/鼠标在 canvas 写字母 → 轨迹栅格化为 64x64 位图 → 与 26 个小写字母的
+//       标准字体参考位图做相似度匹配（Dice 系数）→ 取 top 候选填入空格。
+const HW_SIZE=64;                       // 识别栅格尺寸
+const HW_ALPH='abcdefghijklmnopqrstuvwxyz';
+let hwRefs=null;                        // { 'a': [Uint8Array,...多字体], ... }
+let hwStrokes=[];                       // 当前手写的多段轨迹，每段是 [{x,y},...]
+let hwCur=null;                         // 当前正在画的这一段
+let hwCanvas=null,hwCtx=null;
+let hwPenOn=false;
+let hwGuessText='';                     // 当前识别出的字母（已填入的值）
+let hwBound=false;
+function hwInit(){
+ hwCanvas=$('s-hw');if(!hwCanvas)return;
+ // 按显示尺寸设置画布分辨率（2x 保证清晰）
+ const w=hwCanvas.clientWidth||420;
+ hwCanvas.width=w; hwCanvas.height=hwCanvas.clientHeight||180;
+ hwCtx=hwCanvas.getContext('2d');
+ hwCtx.lineWidth=Math.max(6,w*0.018); hwCtx.lineCap='round'; hwCtx.lineJoin='round';
+ hwCtx.strokeStyle='#c97b93';
+ if(!hwBound){bindHW(hwCanvas);hwBound=true;}
+ hwBuildRefs();
+}
+function hwBuildRefs(){
+ if(hwRefs)return;
+ const cv=document.createElement('canvas');cv.width=HW_SIZE;cv.height=HW_SIZE;
+ const c=cv.getContext('2d');
+ hwRefs={};
+ // 多字体模板：兼顾印刷体与手写体，提升小朋友手写的识别鲁棒性
+ const fonts=['"Arial","Helvetica Neue",sans-serif','"Comic Sans MS","Segoe Print",cursive','"Georgia",serif'];
+ c.textAlign='center';c.textBaseline='middle';
+ for(let i=0;i<26;i++){
+  const ch=HW_ALPH[i];
+  const list=[];
+  fonts.forEach(f=>{
+   c.clearRect(0,0,HW_SIZE,HW_SIZE);
+   c.font='bold '+(HW_SIZE*0.78)+'px '+f;
+   c.fillStyle='#000';
+   c.fillText(ch,HW_SIZE/2,HW_SIZE/2+2);
+   list.push(binarize(c.getImageData(0,0,HW_SIZE,HW_SIZE)));
+  });
+  hwRefs[ch]=list;
+ }
+}
+function bindHW(cv){
+ cv.addEventListener('mousedown',e=>{hwPenDown(e.offsetX,e.offsetY);e.preventDefault();});
+ cv.addEventListener('mousemove',e=>{if(hwPenOn)hwPenMove(e.offsetX,e.offsetY);});
+ cv.addEventListener('mouseup',()=>hwPenUp());
+ cv.addEventListener('mouseleave',()=>{if(hwPenOn)hwPenUp();});
+ cv.addEventListener('touchstart',e=>{const t=e.touches[0];const r=cv.getBoundingClientRect();hwPenDown(t.clientX-r.left,t.clientY-r.top);e.preventDefault();},{passive:false});
+ cv.addEventListener('touchmove',e=>{if(hwPenOn){const t=e.touches[0];const r=cv.getBoundingClientRect();hwPenMove(t.clientX-r.left,t.clientY-r.top);e.preventDefault();}},{passive:false});
+ cv.addEventListener('touchend',e=>{hwPenUp();e.preventDefault();});
+}
+function hwPenDown(x,y){if(spellLocked)return;hwPenOn=true;
+ // 开始写新字母：清掉上一次的候选条
+ const box=$('s-hw-cands');if(box)box.innerHTML='';
+ hwCur=[{x:x,y:y}];hwStrokes.push(hwCur);hwCtx.beginPath();hwCtx.moveTo(x,y);}
+function hwPenMove(x,y){if(!hwPenOn||!hwCur)return;hwCur.push({x:x,y:y});hwCtx.lineTo(x,y);hwCtx.stroke();}
+function hwPenUp(){
+ if(!hwPenOn)return; hwPenOn=false;
+ if(!hwCur||hwCur.length<2){ // 太短（点一下）忽略
+  hwStrokes.pop();
+  return;
+ }
+ // 手写结束 → 识别
+ const ch=hwRecognize();
+ if(ch){ hwCommit(ch); }
+ else { hwClearInk(); }  // 低置信度：清画布笔迹，保留候选条让用户点选或重写
+}
+// 栅格化手写轨迹 → 64x64 二值位图
+function hwRasterize(){
+ const off=document.createElement('canvas');off.width=HW_SIZE;off.height=HW_SIZE;
+ const c=off.getContext('2d');
+ c.lineWidth=5;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#000';
+ // 归一化：计算轨迹包围盒，缩放到画布内并居中
+ let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+ hwStrokes.forEach(s=>s.forEach(p=>{if(p.x<minX)minX=p.x;if(p.y<minY)minY=p.y;if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y;}));
+ const bw=maxX-minX, bh=maxY-minY;
+ if(bw<4||bh<4)return null;
+ const scale=Math.min((HW_SIZE*0.82)/bw,(HW_SIZE*0.82)/bh);
+ const ox=(HW_SIZE-bw*scale)/2, oy=(HW_SIZE-bh*scale)/2;
+ const tx=x=>ox+(x-minX)*scale, ty=y=>oy+(y-minY)*scale;
+ hwStrokes.forEach(s=>{c.beginPath();c.moveTo(tx(s[0].x),ty(s[0].y));for(let i=1;i<s.length;i++)c.lineTo(tx(s[i].x),ty(s[i].y));c.stroke();});
+ return binarize(c.getImageData(0,0,HW_SIZE,HW_SIZE));
+}
+function binarize(img){ // 取 R 通道灰度，>128 记为 1
+ const d=img.data, out=new Uint8Array(HW_SIZE*HW_SIZE);
+ for(let i=0;i<HW_SIZE*HW_SIZE;i++){ out[i]=d[i*4]>128?1:0; }
+ return out;
+}
+function hwSimilarity(a,b){ // Dice 系数
+ let inter=0, sa=0, sb=0;
+ for(let i=0;i<a.length;i++){ if(a[i]&&b[i])inter++; if(a[i])sa++; if(b[i])sb++; }
+ if(sa===0||sb===0)return 0;
+ return 2*inter/(sa+sb);
+}
+function hwRecognize(){
+ const bmp=hwRasterize(); if(!bmp)return null;
+ hwBuildRefs();
+ let scores=[];
+ for(let i=0;i<26;i++){
+  const ch=HW_ALPH[i];
+  let best=0;
+  hwRefs[ch].forEach(ref=>{const s=hwSimilarity(bmp,ref);if(s>best)best=s;});
+  scores.push({ch:ch,s:best});
+ }
+ scores.sort((a,b)=>b.s-a.s);
+ const top=scores[0];
+ // 无论置信度高低都给出候选（top 3），低置信度时不自动填入，交给用户点选
+ hwShowCands(scores.slice(0,3));
+ if(top.s<0.30)return null;      // 太不像：不自动填，让用户从候选里选或重写
+ return top.ch;
+}
+function hwShowCands(list){
+ const box=$('s-hw-cands');if(!box)return;
+ box.innerHTML='';
+ list.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='hw-cand';b.textContent=c.ch;
+  b.onclick=()=>hwReplace(c.ch);box.appendChild(b);});
+}
+function hwReplace(ch){ // 把当前格替换成 ch
+ if(spellLocked)return;
+ // 用当前已填内容，替换最后一位
+ const cur=hwGuess();
+ hwSetGuess(cur.slice(0,-1)+ch);
+}
+function hwCommit(ch){ // 识别出字母，填入当前空格
+ if(spellLocked)return;
+ const cur=hwGuess();
+ const full=spWord.en.length;
+ if(cur.length>=full)return;      // 已填满
+ hwSetGuess(cur+ch);
+ // 清空画布笔迹（准备写下一个字母），但保留候选条以便纠错
+ hwClearInk();
+}
+function hwClearInk(){ // 只清画布笔迹，不清候选条
+ hwStrokes=[]; hwCur=null;
+ if(hwCtx){hwCtx.clearRect(0,0,hwCanvas.width,hwCanvas.height);}
+}
+function hwClear(){ // 清空画布与候选
+ hwClearInk();
+ const box=$('s-hw-cands');if(box)box.innerHTML='';
+}
+function hwDel(){ // 退一格：删掉当前已填的最后一个字母
+ if(spellLocked)return;
+ hwSetGuess(hwGuess().slice(0,-1));
+ hwClear();
+}
+// 手写模式下，当前拼写内容暂存于 hwGuessText；与 s-typing 分离
+function hwGuess(){return hwGuessText;}
+function hwSetGuess(s){
+ hwGuessText=s.toLowerCase();
+ // 同步到 s-typing（保持 getGuess 兼容）
+ const ti=$('s-typing');if(ti)ti.value=hwGuessText;
+ renderSlots();
+ if(hwGuessText.length>=spWord.en.length)checkSpell();
+}
+function hwToggleKbd(){ // 手写 ↔ 键盘 切换
+ hwUseKbd=!hwUseKbd;
+ applyHWMode();
+}
+let hwUseKbd=false;  // false=手写（默认），true=键盘
+
+
 /* ---------- 拼写 ---------- */
 let spWord=null,spInput=[],spKeys=[],spellQueue=[],spellIdx=0,spellLetters=[],spellLocked=false,keyOrder=[];
 let spMode=localStorage.getItem('mw_spellmode')||'type';  // 独立拼写闯关默认'自己输入'（已去掉'打乱字母'）；背新词 drill 内部会按遍数自动切换
+
+// 根据当前 spMode 与 hwUseKbd 决定显示手写区还是键盘输入框
+function applyHWMode(){
+ const wrap=$('s-hw-wrap'), ti=$('s-typing');
+ const useHW=(spMode==='type')&&!hwUseKbd;
+ if(wrap)wrap.style.display=useHW?'flex':'none';
+ if(ti)ti.style.display=(spMode==='type'&&hwUseKbd)?'block':'none';
+ if(useHW){hwInit();}else{hwClear();}
+ if(!useHW&&spMode==='type'&&hwUseKbd){setTimeout(()=>ti.focus(),100);}
+}
 
 /* ---------- 背新词专属拼写闯关（记住了 → 3 遍打乱字母 + 3 遍自己输入） ---------- */
 // drill = { word, round, from }  round: 0..5  (0-2 打乱字母, 3-5 自己输入)
@@ -875,9 +1075,9 @@ function showSpellDrill(){spWord=spellDrill.word;spellLetters=spWord.en.split(''
  // 设置当前模式对应的输入区
  $('s-keys').style.display=(spMode==='keys')?'flex':'none';
  $('s-keys').innerHTML='';
- const ti=$('s-typing');
- ti.style.display=(spMode==='type')?'block':'none';
- ti.value='';if(spMode==='type')setTimeout(()=>ti.focus(),100);
+ hwGuessText='';hwClear();
+ const ti=$('s-typing');ti.value='';
+ applyHWMode();
  renderSlots();
  if(spMode==='keys')renderKeys();}
 function spellDrillCorrect(){
@@ -933,12 +1133,13 @@ function showSpell(keepMode){spWord=spellQueue[spellIdx];spellLetters=spWord.en.
  // 独立拼写：只保留自己输入模式
  $('s-drill-bar').classList.add('hidden');
  $('s-drill-steps').classList.add('hidden');
- const ti=$('s-typing');
- ti.style.display='block';
- ti.value='';setTimeout(()=>ti.focus(),100);
+ $('s-keys').style.display='none';
+ hwGuessText='';hwClear();
+ const ti=$('s-typing');ti.value='';
+ applyHWMode();
  renderSlots();}
 // 当前已拼出的内容
-function getGuess(){return spMode==='keys'?spInput.map(i=>spellLetters[i]).join(''):$('s-typing').value.toLowerCase();}
+function getGuess(){return spMode==='keys'?spInput.map(i=>spellLetters[i]).join(''):hwGuessText;}
 function renderSlots(){const arr=$('s-slots');arr.innerHTML='';
  const guess=getGuess();
  spWord.en.split('').forEach((_,i)=>{const d=document.createElement('div');
@@ -952,9 +1153,11 @@ function renderKeys(){const kb=$('s-keys');kb.innerHTML='';
 function pressKey(i){if(spellLocked||spKeys[i]===null)return;spInput.push(i);spKeys[i]=null;
  renderSlots();renderKeys();
  if(spInput.length===spWord.en.length)checkSpell();}
-// 自由输入模式：边输边更新格子，输满自动判分
-function onType(){if(spellLocked)return;renderSlots();
- if($('s-typing').value.length>=spWord.en.length)checkSpell();}
+// 键盘输入模式：边输边更新格子，输满自动判分
+function onType(){if(spellLocked)return;
+ hwGuessText=$('s-typing').value.toLowerCase();
+ renderSlots();
+ if(hwGuessText.length>=spWord.en.length)checkSpell();}
 $('s-typing').addEventListener('input',onType);
 function checkSpell(){const guess=getGuess();
  const fb=$('s-feedback');
@@ -970,18 +1173,19 @@ function checkSpell(){const guess=getGuess();
    spellDrillWrong();
    fb.textContent='❌ 拼错了，已加入错词本，再试一次！';
    setTimeout(()=>{spInput=[];spKeys=spellLetters.map((_,i)=>i);spellLocked=false;
-    $('s-typing').value='';renderSlots();renderKeys();fb.textContent='';
-    if(spMode==='type')$('s-typing').focus();},900);return;}
+    hwGuessText='';hwClear();$('s-typing').value='';renderSlots();renderKeys();fb.textContent='';
+    if(spMode==='type'&&hwUseKbd)$('s-typing').focus();},900);return;}
   fb.textContent='再想想哦～';
   setTimeout(()=>{spInput=[];spKeys=spellLetters.map((_,i)=>i);spellLocked=false;
-   $('s-typing').value='';renderSlots();renderKeys();fb.textContent='';
-   if(spMode==='type')$('s-typing').focus();},900);}}
+   hwGuessText='';hwClear();$('s-typing').value='';renderSlots();renderKeys();fb.textContent='';
+   if(spMode==='type'&&hwUseKbd)$('s-typing').focus();},900);}}
 function spellHint(){const next=getGuess().length;if(next>=spWord.en.length)return;
- if(spMode==='type'){ // 自由输入模式：直接填入下一个正确字母
-  const ti=$('s-typing');ti.value+=spWord.en[next];renderSlots();
-  if(ti.value.length>=spWord.en.length)checkSpell();return;}
- const target=spWord.en[next].toLowerCase();
- for(let i=0;i<spellLetters.length;i++){if(spKeys[i]!==null&&spellLetters[i].toLowerCase()===target){pressKey(i);return;}}}
+ if(spMode==='keys'){ // 打乱字母：自动按下正确字母按键
+  const target=spWord.en[next].toLowerCase();
+  for(let i=0;i<spellLetters.length;i++){if(spKeys[i]!==null&&spellLetters[i].toLowerCase()===target){pressKey(i);return;}}
+  return;}
+ // 自己输入/手写：填入下一个正确字母
+ hwSetGuess(getGuess()+spWord.en[next]);}
 function speakSpell(){if(spWord)speak(spWord.en);}
 function nextSpell(){
  if(drillDone){ // 闯关 6 遍完成，点击进入下一个单词
