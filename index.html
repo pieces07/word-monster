@@ -505,12 +505,72 @@ function speak(t){
  const url='https://dict.youdao.com/dictvoice?audio='+encodeURIComponent(t)+'&type='+type;
  _playUrl(url);
 }
-/* 整句发音：百度翻译 TTS（有道读不了长句，百都能读任意句子，国内直连，lan=en 美音 / lan=uk 英音） */
+/* 整句发音：优先用浏览器语音合成（iPhone/电脑可读整句），不支持时退回有道逐词朗读（华为平板能出声） */
+let _ttsVoices=null;
+function _loadVoices(){
+ if(_ttsVoices&&_ttsVoices.length)return _ttsVoices;
+ try{_ttsVoices=window.speechSynthesis?speechSynthesis.getVoices():[];}catch(e){_ttsVoices=[];}
+ if(_ttsVoices.length===0&&window.speechSynthesis){
+  try{speechSynthesis.getVoices();}catch(e){}
+ }
+ return _ttsVoices;
+}
+function _pickVoice(){
+ const vs=_loadVoices();
+ const want=ACCENT==='us'?'en-US':'en-GB';
+ let v=vs.find(x=>x.lang&&x.lang.toLowerCase()===want.toLowerCase());
+ if(!v)v=vs.find(x=>x.lang&&x.lang.toLowerCase().indexOf('en')===0);
+ return v||null;
+}
+function _ttsSpeak(t,onDone){
+ try{
+  const u=new SpeechSynthesisUtterance(t);
+  const v=_pickVoice();if(v)u.voice=v;
+  u.lang=ACCENT==='us'?'en-US':'en-GB';
+  u.rate=0.85;
+  let started=false;
+  u.onstart=()=>{started=true;};
+  u.onend=()=>{if(onDone)onDone();};
+  u.onerror=()=>{if(!started&&onDone)onDone();};
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+  // 若 600ms 内未开始，判定失败走 fallback
+  setTimeout(()=>{if(!started&&onDone)onDone();},600);
+ }catch(e){ if(onDone)onDone(); }
+}
+function _youdaoWordChain(t){
+ // 把句子拆成单词，逐个用有道朗读（有道读不了整句，但单词都能读）
+ const words=t.replace(/[^A-Za-z' -]/g,' ').split(/\s+/).filter(Boolean);
+ if(!words.length)return;
+ const type=ACCENT==='us'?'2':'1';
+ let i=0;
+ const next=()=>{
+  if(i>=words.length)return;
+  const w=words[i++];
+  const url='https://dict.youdao.com/dictvoice?audio='+encodeURIComponent(w)+'&type='+type;
+  const a=_mkAudio();
+  a.pause();
+  let played=false;
+  const play=()=>{if(played)return;played=true;const p=a.play();if(p&&p.catch)p.catch(()=>{setTimeout(next,300);});};
+  a.oncanplay=play;
+  a.onloadeddata=play;
+  a.onerror=()=>{setTimeout(next,200);};
+  a.onended=()=>{setTimeout(next,150);};
+  a.src=url;
+  a.load();
+  setTimeout(play,300); // 兜底
+ };
+ next();
+}
 function speakSentence(t){
  if(!t)return;
- const lan=ACCENT==='us'?'en':'uk';
- const url='https://fanyi.baidu.com/gettts?lan='+lan+'&text='+encodeURIComponent(t)+'&spd=3&source=web';
- _playUrl(url);
+ const canTTS=(typeof window!=='undefined')&&window.speechSynthesis&&('SpeechSynthesisUtterance' in window);
+ if(canTTS){
+  // 尝试浏览器 TTS，失败则退回有道逐词
+  _ttsSpeak(t,()=>{_youdaoWordChain(t);});
+ }else{
+  _youdaoWordChain(t);
+ }
 }
 function confetti(){const e=['🎉','⭐','🌈','🎊','💖'];for(let i=0;i<14;i++){const s=document.createElement('div');s.className='confetti';s.textContent=e[i%e.length];s.style.left=Math.random()*95+'vw';s.style.animationDelay=Math.random()*0.6+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),3000);}}
 
