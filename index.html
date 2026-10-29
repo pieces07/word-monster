@@ -103,6 +103,51 @@
   .ui-dlg-btns button { flex:1; border:none; border-radius:16px; padding:13px; font-size:16px; font-weight:bold; cursor:pointer; margin:0; }
   .ui-dlg-btns .ui-cancel { background:#f3e8ee; color:#a58790; }
   .ui-dlg-btns .ui-ok { background:linear-gradient(135deg,#f2a7c1,#e88fb0); color:#fff; }
+
+  /* ---------- 响应式适配：平板/手机自动贴合屏幕 ---------- */
+  /* 手机（默认，<640px）：保持现状，内容填满小屏 */
+  /* 大屏手机 / 小平板（640~899px）：适当放宽、字号略增 */
+  @media (min-width:640px){
+    .app { max-width:640px; padding:20px 24px 48px; }
+    h1 { font-size:30px; }
+    .btn { font-size:20px; padding:17px; }
+    .syl-word { font-size:52px; }
+    .word { font-size:52px; }
+    .quiz-word { font-size:50px; }
+    .syl-emoji { font-size:84px; }
+  }
+  /* 平板（>=900px）：大幅放宽、卡片内边距加大、按钮更大更好点，填满平板屏 */
+  @media (min-width:900px){
+    .app { max-width:780px; padding:28px 32px 56px; }
+    h1 { font-size:34px; margin:18px 0 6px; }
+    .sub { font-size:15px; margin-bottom:22px; }
+    .card { padding:28px; border-radius:30px; margin-bottom:20px; }
+    .btn { font-size:22px; padding:18px; border-radius:20px; margin-bottom:14px; }
+    .opt { font-size:21px; padding:18px; }
+    .stat b { font-size:26px; }
+    .stat span { font-size:13px; }
+    .syl-word { font-size:60px; }
+    .syl-phonetic { font-size:22px; }
+    .syl-meaning { font-size:22px; }
+    .syl-emoji { font-size:92px; }
+    .syl-chip .s-en { font-size:26px; }
+    .syl-chip { padding:14px 18px; }
+    .word { font-size:56px; }
+    .quiz-word { font-size:56px; }
+    .slot { width:52px; height:58px; font-size:32px; }
+    .key { width:56px; height:56px; font-size:26px; }
+    .speak-pill { font-size:18px; padding:14px 26px; }
+    .accent-tag { font-size:15px; padding:5px 15px; }
+    .drill-steps i { width:32px; height:32px; line-height:32px; font-size:15px; }
+    .feedback { font-size:20px; }
+    ul.wordlist li { font-size:18px; padding:13px 8px; }
+    input, textarea { font-size:18px; padding:14px; }
+    .ui-dlg { max-width:420px; }
+  }
+  /* 平板横屏（>=1024px 且高度较小）：进一步适配，避免内容过长 */
+  @media (min-width:1024px){
+    .app { max-width:860px; }
+  }
 </style>
 </head>
 <body>
