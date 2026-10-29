@@ -164,6 +164,8 @@
   .hw-clear { background:linear-gradient(135deg,#f2a7c1,#e88fb0); }
   .hw-del { background:linear-gradient(135deg,#c9b8e0,#b5a0d0); }
   .hw-kbd { background:linear-gradient(135deg,#a8d4c8,#8fc4b4); color:#fff !important; }
+  .hw-mode-toggle { display:none; justify-content:center; margin:2px 0 14px; }
+  .hw-mode-toggle .hw-kbd { border:none; border-radius:14px; padding:11px 18px; font-size:15px; font-weight:bold; cursor:pointer; }
   @media (min-width:900px){
     .hw-canvas { height:220px; }
     .hw-cand { width:52px; height:52px; font-size:26px; }
@@ -261,9 +263,9 @@
         <div class="hw-ctrl">
           <button type="button" class="hw-clear" id="s-hw-clear" onclick="hwClear()">✏️ 重写</button>
           <button type="button" class="hw-del" id="s-hw-del" onclick="hwDel()">⌫ 退一格</button>
-          <button type="button" class="hw-kbd" id="s-hw-kbd" onclick="hwToggleKbd()">⌨️ 键盘</button>
         </div>
       </div>
+      <div class="hw-mode-toggle"><button type="button" class="hw-kbd" id="s-hw-kbd" onclick="hwToggleKbd()">⌨️ 切换键盘</button></div>
       <div class="keys" id="s-keys"></div>
       <div class="feedback" id="s-feedback"></div>
       <div class="celebrate hidden" id="s-celebrate">🎉 团团真棒！🎉</div>
@@ -1011,10 +1013,12 @@ function hwPredict(){
   const cands=[];
   for(let i=36;i<62;i++){ cands.push({ch:HW_LABELS[i],score:proba[i]}); }
   cands.sort((a,b)=>b.score-a.score);
-  const top=cands[0];
-  // m/n 形状极像，模型常混淆：用"竖直方向峰顶数"辅助仲裁（n 一个峰、m 两个峰）
-  const ch=hwMnFix(top.ch, cands[1]?cands[1].ch:'');
-  return {ch:ch, score:top.score, cands:cands.slice(0,3)};
+ const top=cands[0];
+ // m/n 形状极像，模型常混淆：用"竖直方向峰顶数"辅助仲裁（n 一个峰、m 两个峰）
+ let ch=hwMnFix(top.ch, cands[1]?cands[1].ch:'');
+ // o/c/r 等弧线字母手写难区分：用闭合度/宽高比辅助仲裁
+ ch=hwOcrFix(ch, cands[1]?cands[1].ch:'', cands[2]?cands[2].ch:'');
+ return {ch:ch, score:top.score, cands:cands.slice(0,3)};
  }catch(e){ return null; }
 }
 // 数手写轨迹竖直方向的"转向"次数（y 上下折返）：n 一次（上→下）、m 三次（上→下→上→下）
@@ -1041,6 +1045,46 @@ function hwMnFix(ch, second){
   if(turns>=2)return 'm';
   if(turns===1)return 'n';
  }
+ return ch;
+}
+// ---- 几何特征提取（基于手写轨迹原始坐标，用于 o/c/r 等易混淆字母仲裁）----
+function hwGeometry(){
+ if(!hwStrokes.length)return null;
+ let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+ const pts=[];
+ hwStrokes.forEach(s=>s.forEach(p=>{pts.push(p);
+  if(p.x<minX)minX=p.x;if(p.y<minY)minY=p.y;if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y;}));
+ if(pts.length<3)return null;
+ const w=maxX-minX, h=maxY-minY;
+ if(w<3||h<3)return null;
+ const first=pts[0], last=pts[pts.length-1];
+ const dx=last.x-first.x, dy=last.y-first.y;
+ const gap=Math.sqrt(dx*dx+dy*dy);          // 首尾点距离（闭合度）
+ const diag=Math.sqrt(w*w+h*h);             // 包围盒对角线
+ const close=gap/diag;                       // 越小越闭合（o 接近 0，c 明显大）
+ const ratio=w/h;                            // 宽高比（r 瘦高 <0.6，o/c 接近 1）
+ return {w,h,ratio,close,gap,diag};
+}
+// o/c/r 仲裁：这些字母手写形状接近，模型常混淆，用几何特征纠正
+//  - r：瘦高（宽高比小）+ 首尾不闭合（顶部小弯，起笔在顶部）
+//  - o：接近方形/圆形（宽高比适中）+ 首尾几乎闭合
+//  - c：接近方形 + 首尾明显分开（开口朝右）
+function hwOcrFix(ch, second, third){
+ const g=hwGeometry(); if(!g)return ch;
+ const confus={o:1,c:1,r:1,a:1,e:1,s:1};
+ // 仅当 top 候选里出现这些易混淆字母时才介入
+ const set=[ch,second,third].filter(Boolean);
+ if(!set.some(x=>confus[x]))return ch;
+ // r：瘦高（竖线为主体），宽高比明显小于 0.7
+ if(set.includes('r')){
+  if(g.ratio<0.7 && g.close>0.25)return 'r';
+ }
+ // o vs c：看闭合度
+ if(ch==='c'||ch==='o'||second==='c'||second==='o'){
+  if(g.close<0.22)return 'o';       // 首尾几乎重合 → o
+  if(g.close>0.42)return 'c';       // 首尾明显分开 → c
+ }
+ // a vs o：a 通常有开口或底部带钩，o 更圆润；难以可靠区分时不强行改
  return ch;
 }
 // 手写轨迹 → 28x28 float32（EMNIST 输入约定：黑底白字、0-255 灰度、转置）
@@ -1141,14 +1185,18 @@ function scrollToView(el){
 let spWord=null,spInput=[],spKeys=[],spellQueue=[],spellIdx=0,spellLetters=[],spellLocked=false,keyOrder=[];
 let spMode=localStorage.getItem('mw_spellmode')||'type';  // 独立拼写闯关默认'自己输入'（已去掉'打乱字母'）；背新词 drill 内部会按遍数自动切换
 
-// 根据当前 spMode 与 hwUseKbd 决定显示手写区还是键盘输入框
+// 根据当前 spMode 与 hwUseKbd 决定显示手写区还是键盘输入框；切换按钮始终可见、文字随模式变化
 function applyHWMode(){
- const wrap=$('s-hw-wrap'), ti=$('s-typing');
- const useHW=(spMode==='type')&&!hwUseKbd;
+ const wrap=$('s-hw-wrap'), ti=$('s-typing'), toggle=$('s-hw-kbd'), toggleBox=$('s-mode-toggle');
+ const isType=(spMode==='type');
+ const useHW=isType&&!hwUseKbd;
  if(wrap)wrap.style.display=useHW?'flex':'none';
- if(ti)ti.style.display=(spMode==='type'&&hwUseKbd)?'block':'none';
+ if(ti)ti.style.display=(isType&&hwUseKbd)?'block':'none';
+ // 切换按钮：仅在"自己输入"模式显示；文字随当前模式切换
+ if(toggleBox) toggleBox.style.display = isType?'flex':'none';
+ if(toggle) toggle.textContent = useHW ? '⌨️ 切换键盘' : '✍️ 切换手写';
  if(useHW){hwInit();}else{hwClear();}
- if(!useHW&&spMode==='type'&&hwUseKbd){setTimeout(()=>ti.focus(),100);}
+ if(!useHW&&isType&&hwUseKbd){setTimeout(()=>ti.focus(),100);}
 }
 
 /* ---------- 背新词专属拼写闯关（记住了 → 3 遍打乱字母 + 3 遍自己输入） ---------- */
