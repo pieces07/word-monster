@@ -135,6 +135,7 @@
       <button class="btn b2" onclick="startQuiz('all')">⚔️ 选择大测验</button>
       <button class="btn b6" onclick="startSpell()">🔤 字母拼写闯关</button>
       <button class="btn b1" onclick="startListen()">👂 听音猜词</button>
+      <button class="btn b2" onclick="startDialog()">💬 对话练习</button>
       <button class="btn b3" onclick="go('wrong')">💥 错词本</button>
       <button class="btn b5" onclick="go('manage')">📝 管理词表</button>
     </div>
@@ -192,6 +193,20 @@
       <div class="celebrate hidden" id="s-celebrate">🎉 团团真棒！🎉</div>
       <button class="btn b5" id="s-hint" onclick="spellHint()">💡 提示一个字母</button>
       <button class="btn b4 hidden" id="s-next" onclick="nextSpell()">下一题 →</button>
+    </div>
+  </div>
+
+  <!-- 对话练习 -->
+  <div class="hidden" id="page-dialog">
+    <button class="back" onclick="go('home')">← 返回</button>
+    <div class="progress-bar"><div class="progress-fill" id="dlg-progress"></div></div>
+    <div class="card" style="text-align:center">
+      <div id="dlg-tip" style="text-align:center; font-size:14px; color:#b5989d; margin-bottom:4px">听句子，选出正确的中文意思</div>
+      <div class="quiz-word" id="dlg-en" style="font-size:30px; line-height:1.35"></div>
+      <button class="speak-btn dark" id="dlg-speak" onclick="speakDlg()" style="margin:0 auto 12px">🔊 听发音</button>
+      <div id="dlg-opts"></div>
+      <div class="feedback" id="dlg-feedback"></div>
+      <button class="btn b4 hidden" id="dlg-next" onclick="nextDlg()">下一句 →</button>
     </div>
   </div>
 
@@ -492,6 +507,55 @@ const BOOK_UNITS=[
 {u:4,ws:[['firefighter','消防队员'],['why','为什么'],['driver','司机'],['cleaner','清洁工'],['delivery worker','快递员'],['police officer','警察；警员'],['a lot of','大量；许多'],['now','现在'],['make the bed','铺床'],['old','年纪大的；老的'],['tell','讲述；告诉'],['everyone','每人'],['Ms','女士']]},
 {u:5,ws:[['speak','说话；发言'],['weather','天气'],['sunny','阳光充足的'],['hot','热的'],['bad','令人不快的；坏的'],['cold','冷的'],['windy','多风的'],['cloudy','多云的'],['rainy','阴雨的'],['snowy','多雪的'],['cool','凉爽的'],['warm','温暖的'],['tomorrow','在明天'],['rain','下雨；雨'],['closed','关闭的'],['film','电影'],['idea','想法；主意'],['fly','操纵（飞行器等）；飞'],['kite','风筝'],['snowman','雪人'],['fun','享乐；乐趣'],['their','他们的；她们的；它们的'],['swim','游泳'],['Sydney','悉尼']]},
 {u:6,ws:[['whose','谁的'],['sweater','毛衣'],['sock','短袜'],['mine','我的'],['wear','穿；戴'],['shirt','衬衫'],['coat','大衣；外套'],['dress','连衣裙'],['which','哪一个；哪些'],['season','季节'],['winter','冬天'],['snow','下雪；雪'],['get together','聚会'],['spring','春天'],['summer','夏天'],['autumn','秋天'],['T-shirt','T恤衫'],['fall','落下'],['leaf','叶（复数 leaves）'],['glove','手套'],['then','然后；那时']]}
+];
+/* 课本常用表达法（Appendix 4，Unit 1-6，按对话分组） */
+const DIALOGS=[
+{u:1,t:'家庭与家务',d:[
+['What\'s your mother\'s job?','你妈妈做什么工作？'],
+['She\'s a doctor.','她是医生。'],
+['Mum and Dad are busy and tired.','爸爸妈妈又忙又累。'],
+['What can we do for them?','我们能为他们做些什么？'],
+['We can do some chores.','我们可以做一些家务活。']]},
+{u:2,t:'我的朋友',d:[
+['What\'s your friend\'s name?','你的朋友叫什么名字？'],
+['His name is Zhang Peng.','他叫张鹏。'],
+['He\'s tall and strong.','他又高又壮。'],
+['He\'s also kind. He often helps me.','他也很友善。他经常帮助我。'],
+['Who\'s your best friend?','谁是你最好的朋友？'],
+['Chen Jie. She\'s funny. She often makes me smile.','陈杰。她很有趣。她经常让我开心。']]},
+{u:3,t:'我们的社区',d:[
+['There is a playground. We often play there.','那里有个游乐场。我们经常在那里玩儿。'],
+['There is a taijiquan club.','这里有一个太极拳俱乐部。'],
+['There are many people.','这里有好多人。'],
+['There is a gym too.','这里还有一个体育馆。'],
+['Great! Let\'s do some sports.','太棒了！我们一起做运动吧。'],
+['My favourite place is the museum.','我最喜欢的地方是博物馆。']]},
+{u:4,t:'了不起的工作',d:[
+['Our neighbour is a firefighter. He often helps people.','我们的邻居是消防员。他经常帮助别人。'],
+['He\'s a school bus driver. He takes us to school every day.','他是校车司机。他每天送我们去学校。'],
+['That\'s an important job too!','那个工作也很重要！'],
+['Chen Jie is making the bed.','陈杰正在铺床。']]},
+{u:5,t:'天气与电话',d:[
+['Hello! Mark speaking.','你好！我是马克。'],
+['Hi, Mark! This is John. What\'s the weather like in Sydney?','嗨，马克！我是约翰。悉尼的天气怎么样？'],
+['Well, it\'s sunny today.','噢，今天是晴天。'],
+['It\'s only two degrees in Beijing.','北京只有两度。'],
+['It\'s raining now.','现在下雨了。'],
+['We can\'t play basketball in the park.','我们不能在公园打篮球了。'],
+['It\'s OK. We can go to the library.','没关系。我们可以去图书馆。'],
+['It\'s hot and sunny here.','这里很热，是个大晴天。'],
+['Their children swim in the pool.','他们的孩子在游泳池里游泳。']]},
+{u:6,t:'季节与衣服',d:[
+['Whose sweater is this, Mum?','这是谁的毛衣，妈妈？'],
+['It\'s your dad\'s.','是你爸爸的。'],
+['Can I wear this new shirt today?','我今天可以穿这件新衬衫吗？'],
+['Yes, but wear a coat too. It\'s cold and windy outside.','可以，但是再穿一件外套吧。外面有风，很冷。'],
+['Which season do you like?','你喜欢哪个季节？'],
+['Winter. It snows a lot.','冬天。冬天经常下雪。'],
+['I like winter too. There are many festivals.','我也喜欢冬天。有很多节日。'],
+['It\'s full of life.','（春天）充满生机。'],
+['And enjoy mooncakes.','还品尝月饼。'],
+['Then spring comes again.','接着春天又来了。']]}
 ];
 const BOOK_WORDS=BOOK_UNITS.flatMap(g=>g.ws);
 function importBook(){let n=0;
@@ -830,6 +894,36 @@ function speakQListen(){}
 const _nextQuiz=nextQuiz;
 nextQuiz=function(){if(listenMode){listenIdx++;if(listenIdx>=listenQueue.length){alert('听力挑战完成！👂🎉');listenMode=false;go('home');}else showListen();}
  else{_nextQuiz();}};
+
+/* ---------- 对话练习 ---------- */
+let dlgQueue=[],dlgIdx=0,dlgLocked=false,dlgCur=null;
+function startDialog(){
+ // 按当前背诵范围选单元，再取其中的句子
+ const units=range.length?range:[1,2,3,4,5,6];
+ const pool=[];
+ DIALOGS.forEach(g=>{if(units.includes(g.u)){g.d.forEach(p=>pool.push({en:p[0],cn:p[1],u:g.u,t:g.t}));}});
+ if(!pool.length){uiToast('所选单元里没有对话句子哦！');return;}
+ dlgQueue=shuffle(pool);dlgIdx=0;go('dialog');showDlg();
+}
+function showDlg(){dlgLocked=false;const p=dlgQueue[dlgIdx];dlgCur=p;
+ $('dlg-en').textContent=p.en;
+ $('dlg-tip').textContent='Unit '+p.u+' · '+p.t+'　听句子，选出正确的中文意思';
+ $('dlg-feedback').textContent='';$('dlg-next').classList.add('hidden');
+ $('dlg-progress').style.width=(dlgIdx/dlgQueue.length*100)+'%';
+ // 干扰项：从同单元其他句子的中文里取，不够则从全表补
+ const wrongs=shuffle(DIALOGS.filter(g=>g.u===p.u).flatMap(g=>g.d.map(x=>x[1])).filter(c=>c!==p.cn)).slice(0,3);
+ const opts=shuffle([p.cn,...wrongs]);
+ const box=$('dlg-opts');box.innerHTML='';
+ opts.forEach(c=>{const b=document.createElement('button');b.className='opt';b.style.fontSize='17px';b.textContent=c;
+  b.onclick=()=>{if(dlgLocked)return;dlgLocked=true;
+   document.querySelectorAll('#dlg-opts .opt').forEach(x=>{if(x.textContent===p.cn)x.classList.add('correct');});
+   if(c===p.cn){$('dlg-feedback').textContent='✅ 答对啦！';confetti();}
+   else{b.classList.add('wrong');$('dlg-feedback').textContent='❌ 正确是：'+p.cn;}
+   $('dlg-next').classList.remove('hidden');};
+  box.appendChild(b);});
+}
+function speakDlg(){if(dlgCur)speak(dlgCur.en);}
+function nextDlg(){dlgIdx++;if(dlgIdx>=dlgQueue.length){uiToast('对话练习完成！你太棒啦 💬🎉');go('home');}else showDlg();}
 
 /* ---------- 错词本渲染 ---------- */
 function renderWrong(){const ul=$('wrong-list');ul.innerHTML='';
