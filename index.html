@@ -170,6 +170,50 @@
     .hw-canvas { height:220px; }
     .hw-cand { width:52px; height:52px; font-size:26px; }
   }
+  /* ---------- 打怪背单词（战斗场景） ---------- */
+  #page-battle { padding-bottom:20px; }
+  .battle-stage {
+    position:relative; background:linear-gradient(180deg,#cdeffd 0%,#dff5e6 60%,#f2e9c8 100%);
+    border-radius:26px; padding:18px 16px 14px; margin-bottom:16px; overflow:hidden;
+    box-shadow:0 6px 18px rgba(200,150,165,.14); border:2px solid #e3f0ee;
+  }
+  .battle-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .battle-monster-label { font-size:13px; font-weight:bold; color:#7a9c8e; }
+  .battle-level { font-size:13px; font-weight:bold; color:#b98a98; }
+  .battle-monster-hp { height:14px; background:#f0d9d3; border-radius:8px; overflow:hidden; margin-bottom:12px; }
+  .battle-monster-hp .fill { height:100%; background:linear-gradient(90deg,#eaa2a0,#dc8f8f); border-radius:8px; transition:width .4s ease; }
+  .battle-arena { position:relative; display:flex; align-items:flex-end; justify-content:space-between; min-height:200px; padding:0 4px; }
+  .battle-fighter { position:relative; display:flex; flex-direction:column; align-items:center; width:42%; }
+  .battle-fighter .avatar { font-size:88px; line-height:1; filter:drop-shadow(0 4px 6px rgba(0,0,0,.12)); transition:transform .2s; }
+  .battle-fighter .avatar img { width:130px; height:130px; object-fit:contain; display:block; }
+  .battle-fighter .name { font-size:13px; font-weight:bold; color:#7a7a8a; margin-top:6px; background:rgba(255,255,255,.75); border-radius:10px; padding:2px 10px; }
+  .battle-fighter.hero .avatar img { width:120px; height:120px; }
+  /* 攻击动画：团团向前突进 */
+  .battle-fighter.hero.attack .avatar { animation:heroAttack .45s ease; }
+  @keyframes heroAttack { 0%{transform:translateX(0)} 40%{transform:translateX(60px) rotate(-8deg)} 100%{transform:translateX(0)} }
+  /* 怪兽受击动画 */
+  .battle-fighter.monster.hit .avatar { animation:monsterHit .5s ease; }
+  @keyframes monsterHit { 0%{transform:translateX(0)} 20%{transform:translateX(10px) rotate(6deg)} 40%{transform:translateX(-10px) rotate(-6deg)} 60%{transform:translateX(8px)} 100%{transform:translateX(0)} }
+  /* 怪兽被打败 */
+  .battle-fighter.monster.defeated .avatar { animation:monsterDefeat .7s ease forwards; }
+  @keyframes monsterDefeat { 0%{transform:translateY(0) rotate(0);opacity:1} 100%{transform:translateY(40px) rotate(20deg);opacity:0} }
+  /* 攻击特效（星星/光波，从团团飞向怪兽） */
+  .battle-fx { position:absolute; font-size:34px; pointer-events:none; animation:fxFly .5s ease forwards; z-index:5; }
+  @keyframes fxFly { 0%{transform:translate(0,0) scale(.6);opacity:1} 100%{transform:translate(120px,-40px) scale(1.3);opacity:0} }
+  /* 伤害数字 */
+  .battle-dmg { position:absolute; top:20px; right:18%; font-size:30px; font-weight:900; color:#e0707a; pointer-events:none; animation:dmgFloat .8s ease forwards; z-index:6; text-shadow:0 2px 0 #fff; }
+  @keyframes dmgFloat { 0%{transform:translateY(0);opacity:1} 100%{transform:translateY(-46px);opacity:0} }
+  .battle-round { text-align:center; font-size:14px; font-weight:bold; color:#8a9a9a; margin-bottom:6px; }
+  .battle-word { text-align:center; font-size:22px; font-weight:900; color:#c97b93; margin:6px 0 2px; }
+  .battle-cn { text-align:center; font-size:26px; font-weight:900; color:#6b5a5e; margin:8px 0 4px; }
+  .battle-question { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:12px; }
+  .battle-question .speak-pill { font-size:16px; padding:11px 20px; }
+  .battle-hp-tip { text-align:center; font-size:13px; color:#b5989d; margin-bottom:4px; }
+  @media (min-width:900px){
+    .battle-fighter .avatar img { width:180px; height:180px; }
+    .battle-fighter.hero .avatar img { width:165px; height:165px; }
+    .battle-arena { min-height:260px; }
+  }
 </style>
 
 </head>
@@ -205,6 +249,7 @@
       </div>
       <button class="btn b4" onclick="startBrowse()">📖 看卡片 学单词</button>
       <button class="btn b2" onclick="startQuiz('all')">⚔️ 选择大测验</button>
+      <button class="btn b6" onclick="startBattle()">👾 打怪背单词</button>
       <button class="btn b6" onclick="startSpell()">🔤 字母拼写闯关</button>
       <button class="btn b1" onclick="startListen()">👂 听音猜词</button>
       <button class="btn b2" onclick="startDialog()">💬 对话练习</button>
@@ -271,6 +316,50 @@
       <div class="celebrate hidden" id="s-celebrate">🎉 团团真棒！🎉</div>
       <button class="btn b5" id="s-hint" onclick="spellHint()">💡 提示一个字母</button>
       <button class="btn b4 hidden" id="s-next" onclick="nextSpell()">下一题 →</button>
+    </div>
+  </div>
+
+  <!-- 打怪背单词 -->
+  <div class="hidden" id="page-battle">
+    <button class="back" onclick="battleBack()">← 返回</button>
+    <div class="battle-stage">
+      <div class="battle-top">
+        <span class="battle-monster-label" id="bt-monster-name">👾 小怪兽</span>
+        <span class="battle-level" id="bt-level">第 1 只</span>
+      </div>
+      <div class="battle-monster-hp"><div class="fill" id="bt-hp"></div></div>
+      <div class="battle-arena">
+        <div class="battle-fighter hero" id="bt-hero">
+          <div class="avatar" id="bt-hero-avatar"><img src="img/hero.png" alt="团团"></div>
+          <div class="name">团团</div>
+        </div>
+        <div class="battle-fighter monster" id="bt-monster">
+          <div class="avatar" id="bt-monster-avatar"><img src="img/monster1.png" alt="小怪兽"></div>
+          <div class="name" id="bt-monster-label">小怪兽</div>
+        </div>
+      </div>
+      <div class="battle-round" id="bt-round">背对 0 / 10 个即可打败怪兽</div>
+    </div>
+    <div class="card">
+      <div class="battle-cn" id="bt-cn">中文词义</div>
+      <div class="battle-question">
+        <button class="speak-pill" onclick="battleSpeak()">🔊 听发音</button>
+        <button class="accent-tag" onclick="toggleAccent()">🇺🇸 美音</button>
+      </div>
+      <div class="slots" id="bt-slots"></div>
+      <input autocapitalize="off" autocomplete="off" autocorrect="off" class="hidden" id="bt-typing" placeholder="在这里输入字母…" spellcheck="false" style="text-align:center; font-size:22px; letter-spacing:3px; text-transform:lowercase">
+      <div class="hw-wrap" id="bt-hw-wrap">
+        <div class="hw-hint">👆 用手指在下面写一个字母</div>
+        <canvas class="hw-canvas" id="bt-hw" width="420" height="180"></canvas>
+        <div class="hw-cands" id="bt-hw-cands"></div>
+        <div class="hw-ctrl">
+          <button type="button" class="hw-clear" onclick="battleClear()">✏️ 重写</button>
+          <button type="button" class="hw-del" onclick="battleDel()">⌫ 退一格</button>
+        </div>
+      </div>
+      <div class="hw-mode-toggle" id="bt-mode-toggle"><button type="button" class="hw-kbd" id="bt-hw-kbd" onclick="battleToggleKbd()">⌨️ 切换键盘</button></div>
+      <div class="feedback" id="bt-feedback"></div>
+      <button class="btn b5" onclick="battleHint()">💡 提示一个字母</button>
     </div>
   </div>
 
@@ -1427,6 +1516,258 @@ function showDlg(){dlgLocked=false;const p=dlgQueue[dlgIdx];dlgCur=p;
 }
 function speakDlg(){if(dlgCur)speakSentence(dlgCur.idx);}
 function nextDlg(){dlgIdx++;if(dlgIdx>=dlgQueue.length){uiToast('对话练习完成！你太棒啦 💬🎉');go('home');}else showDlg();}
+
+/* ---------- 打怪背单词 ---------- */
+// 战斗场景：一边团团、一边怪兽，背对一个单词攻击一次，连续10个打败怪兽出下一只
+const BT_NEED=10;                        // 连续背对 10 个打败一只怪兽
+const BT_MONSTERS=[                      // 依次登场的怪兽（img 图片，暂无图时用 emoji 兜底）
+  {img:'img/monster1.png',emoji:'👾',name:'小绿怪'},
+  {img:'img/monster2.png',emoji:'👹',name:'红角怪'},
+  {img:'img/monster1.png',emoji:'👻',name:'小幽灵'},
+  {img:'img/monster2.png',emoji:'🐙',name:'八爪怪'},
+  {img:'img/monster1.png',emoji:'🐲',name:'小飞龙'},
+  {img:'img/monster2.png',emoji:'🤖',name:'铁皮怪'},
+  {img:'img/monster1.png',emoji:'🦖',name:'小恐龙'},
+  {img:'img/monster2.png',emoji:'🐍',name:'长蛇怪'},
+  {img:'img/monster1.png',emoji:'🧟',name:'木乃伊'},
+  {img:'img/monster2.png',emoji:'🐺',name:'大灰狼'}
+];
+let btQueue=[],btIdx=0;                  // 出题队列与游标
+let btMonsterIndex=0;                    // 当前第几只怪兽（从 0 起）
+let btStreak=0;                          // 当前怪兽下连续背对计数（0..10）
+let btTotalBeaten=0;                     // 累计打败怪兽数
+let btLocked=false;                      // 答题锁定（攻击动画中）
+let btUseKbd=false;                      // false=手写，true=键盘
+// 战斗页自己的手写状态（复用 hwPredict 识别底层）
+let btStrokes=[],btCur=null,btCanvas=null,btCtx=null,btPenOn=false,btBound=false,btTimer=null;
+let btGuessText='';
+
+function startBattle(){
+ const pool=rangeWords(words);
+ if(!pool.length){uiToast(range.length?'所选单元里没有可以拼写的单词哦！':'词库是空的，先导入单词吧！');return;}
+ btQueue=shuffle(pool);btIdx=0;
+ btMonsterIndex=0;btStreak=0;btTotalBeaten=0;btLocked=false;btUseKbd=false;
+ go('battle');battleShowMonster();battleNextWord();
+}
+function battleBack(){go('home');}
+function battleShowMonster(){
+ const m=BT_MONSTERS[btMonsterIndex%BT_MONSTERS.length];
+ const av=$('bt-monster-avatar');
+ // 始终用 img 展示（HTML 已内置 img 结构），图片加载失败时该 img 隐藏、用 emoji 兜底
+ let img=av.querySelector('img');
+ if(!img){ img=document.createElement('img');av.appendChild(img); }
+ img.style.display='block';
+ img.onerror=()=>{ img.style.display='none'; if(!av.querySelector('.bt-fb')){const s=document.createElement('span');s.className='bt-fb';s.style.fontSize='88px';av.appendChild(s);} av.querySelector('.bt-fb').textContent=m.emoji; };
+ img.src=m.img;
+ const fb=av.querySelector('.bt-fb');if(fb)fb.remove();
+ $('bt-monster-name').textContent=m.name;
+ $('bt-monster-label').textContent=m.name;
+ $('bt-level').textContent='第 '+(btMonsterIndex+1)+' 只';
+ const mon=$('bt-monster');
+ mon.classList.remove('defeated','hit');
+ // 重置血条为满
+ battleSetHp(BT_NEED);
+}
+function battleSetHp(remain){
+ const pct=Math.max(0,Math.min(100,remain/BT_NEED*100));
+ $('bt-hp').style.width=pct+'%';
+}
+function battleNextWord(){
+ if(btIdx>=btQueue.length){ btQueue=shuffle(rangeWords(words)); btIdx=0; }  // 词用完了重新洗牌
+ const w=btQueue[btIdx];
+ battleSetWord(w);
+ battleSpeak();   // 自动读一遍发音
+}
+function battleSetWord(w){
+ btLocked=false;
+ btGuessText='';
+ battleClearInk();
+ battleShowCands([]);
+ $('bt-typing').value='';
+ $('bt-cn').textContent=emojiFor(w.en)+' '+w.cn;
+ $('bt-round').textContent='背对 '+btStreak+' / '+BT_NEED+' 个即可打败怪兽';
+ $('bt-feedback').textContent='';
+ battleRenderSlots();
+ battleApplyMode();
+}
+function battleRenderSlots(){
+ const arr=$('bt-slots');arr.innerHTML='';
+ const en=btQueue[btIdx].en;
+ en.split('').forEach((_,i)=>{const d=document.createElement('div');
+  d.className='slot'+(i<btGuessText.length?' done':'');d.textContent=btGuessText[i]||'';arr.appendChild(d);});
+}
+function battleGuess(){return btGuessText;}
+function battleSetGuess(s){
+ btGuessText=s.toLowerCase();
+ const ti=$('bt-typing');if(ti)ti.value=btGuessText;
+ battleRenderSlots();
+ if(btGuessText.length>=btQueue[btIdx].en.length)battleCheck();
+}
+// 战斗页手写：复用 hwPredict 的识别底层（临时把轨迹赋给全局 hwStrokes）
+function battlePredict(){
+ const saved=hwStrokes;
+ hwStrokes=btStrokes;
+ let r=null;
+ try{ r=hwPredict(); }catch(e){ r=null; }
+ hwStrokes=saved;
+ return r;
+}
+function battleApplyMode(){
+ const wrap=$('bt-hw-wrap'), ti=$('bt-typing'), toggle=$('bt-hw-kbd'), toggleBox=$('bt-mode-toggle');
+ const useHW=!btUseKbd;
+ if(wrap)wrap.style.display=useHW?'flex':'none';
+ if(ti)ti.style.display=btUseKbd?'block':'none';
+ if(toggleBox)toggleBox.style.display='flex';
+ if(toggle)toggle.textContent=useHW?'⌨️ 切换键盘':'✍️ 切换手写';
+ if(useHW)battleInitHW();else battleClear();
+ if(btUseKbd)setTimeout(()=>ti.focus(),100);
+}
+function battleToggleKbd(){ btUseKbd=!btUseKbd; battleApplyMode(); }
+function battleInitHW(){
+ btCanvas=$('bt-hw');if(!btCanvas)return;
+ const w=btCanvas.clientWidth||420;
+ btCanvas.width=w; btCanvas.height=btCanvas.clientHeight||180;
+ btCtx=btCanvas.getContext('2d');
+ btCtx.lineWidth=Math.max(8,w*0.022);btCtx.lineCap='round';btCtx.lineJoin='round';btCtx.strokeStyle='#c97b93';
+ if(!btBound){battleBindHW(btCanvas);btBound=true;}
+}
+function battleBindHW(cv){
+ cv.addEventListener('mousedown',e=>{battlePenDown(e.offsetX,e.offsetY);e.preventDefault();});
+ cv.addEventListener('mousemove',e=>{if(btPenOn)battlePenMove(e.offsetX,e.offsetY);});
+ cv.addEventListener('mouseup',()=>battlePenUp());
+ cv.addEventListener('mouseleave',()=>{if(btPenOn)battlePenUp();});
+ cv.addEventListener('touchstart',e=>{const t=e.touches[0];const r=cv.getBoundingClientRect();battlePenDown(t.clientX-r.left,t.clientY-r.top);e.preventDefault();},{passive:false});
+ cv.addEventListener('touchmove',e=>{if(btPenOn){const t=e.touches[0];const r=cv.getBoundingClientRect();battlePenMove(t.clientX-r.left,t.clientY-r.top);e.preventDefault();}},{passive:false});
+ cv.addEventListener('touchend',e=>{battlePenUp();e.preventDefault();});
+}
+function battlePenDown(x,y){
+ if(btLocked)return;
+ if(btTimer){clearTimeout(btTimer);btTimer=null;}
+ btPenOn=true;battleShowCands([]);
+ btCur=[{x:x,y:y}];btStrokes.push(btCur);
+ btCtx.beginPath();btCtx.moveTo(x,y);
+}
+function battlePenMove(x,y){if(!btPenOn||!btCur)return;btCur.push({x:x,y:y});btCtx.lineTo(x,y);btCtx.stroke();}
+function battlePenUp(){
+ if(!btPenOn)return;btPenOn=false;
+ if(!btCur||btCur.length<2){btStrokes.pop();return;}
+ if(btTimer)clearTimeout(btTimer);
+ btTimer=setTimeout(()=>{btTimer=null;battleDoRecognize();},800);
+}
+function battleDoRecognize(){
+ if(btLocked)return;
+ if(!window.EMNIST_W){battleFeedback('⚠️ 识别组件加载失败，请用键盘输入');return;}
+ const pred=battlePredict();
+ if(!pred){battleFeedback('再写清楚一点哦～');return;}
+ const {ch,score,cands}=pred;
+ if(score<0.25){ battleShowCands(cands); battleFeedback('没太看清，点下面候选或重写'); return; }
+ battleShowCands([]);
+ battleCommit(ch);
+}
+function battleShowCands(list){
+ const box=$('bt-hw-cands');if(!box)return;
+ box.innerHTML='';
+ list.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='hw-cand';b.textContent=c.ch;
+  b.onclick=()=>battleReplace(c.ch);box.appendChild(b);});
+}
+function battleReplace(ch){
+ if(btLocked)return;
+ if(btGuessText.length>=btQueue[btIdx].en.length)return;
+ battleSetGuess(btGuessText+ch);
+ battleShowCands([]);
+}
+function battleCommit(ch){
+ if(btLocked)return;
+ if(btGuessText.length>=btQueue[btIdx].en.length)return;
+ battleSetGuess(btGuessText+ch);
+ battleClearInk();
+}
+function battleClearInk(){
+ btStrokes=[];btCur=null;
+ if(btCtx)btCtx.clearRect(0,0,btCanvas.width,btCanvas.height);
+}
+function battleClear(){ battleClearInk(); const box=$('bt-hw-cands');if(box)box.innerHTML=''; }
+function battleDel(){
+ if(btLocked)return;
+ battleSetGuess(btGuessText.slice(0,-1));
+ battleClear();
+}
+function battleFeedback(msg){$('bt-feedback').textContent=msg;}
+function battleSpeak(){ const w=btQueue[btIdx]; if(w)speak(w.en); }
+function battleHint(){
+ if(btLocked)return;
+ const next=btGuessText.length;
+ if(next>=btQueue[btIdx].en.length)return;
+ battleSetGuess(btGuessText+btQueue[btIdx].en[next]);
+}
+// 键盘输入：边输边更新，输满自动判分
+function battleOnType(){
+ if(btLocked)return;
+ btGuessText=$('bt-typing').value.toLowerCase();
+ battleRenderSlots();
+ if(btGuessText.length>=btQueue[btIdx].en.length)battleCheck();
+}
+// 判定对错：背对攻击，背错进错词本不掉血
+function battleCheck(){
+ const w=btQueue[btIdx];
+ if(btGuessText.toLowerCase()===w.en.toLowerCase()){ battleCorrect(); }
+ else{ battleWrong(); }
+}
+function battleCorrect(){
+ btLocked=true;
+ btStreak++;
+ // 团团攻击 + 怪兽受击 + 伤害数字
+ battleAttackAnim();
+ $('bt-feedback').textContent='✅ 背对啦！';
+ speak(btQueue[btIdx].en);
+ markMastered(btQueue[btIdx].en);
+ wrongList=wrongList.filter(x=>x.en!==btQueue[btIdx].en);
+ save();
+ if(btStreak>=BT_NEED){ battleWinMonster(); return; }
+ // 未打败：进入下一词
+ setTimeout(()=>{ btIdx++; battleNextWord(); },900);
+}
+function battleWrong(){
+ btLocked=true;
+ const w=btQueue[btIdx];
+ if(!wrongList.some(x=>x.en===w.en))wrongList.push(w);
+ save();
+ $('bt-feedback').textContent='❌ 是 '+w.en+'，记进错词本啦，再试一次！';
+ setTimeout(()=>{ btLocked=false; btGuessText='';battleClear();$('bt-typing').value='';battleRenderSlots();battleFeedback(''); },1100);
+}
+// 攻击动画：团团突进 + 特效飞向怪兽 + 怪兽受击抖动 + 血条下降
+function battleAttackAnim(){
+ $('bt-hero').classList.add('attack');
+ setTimeout(()=>$('bt-hero').classList.remove('attack'),500);
+ $('bt-monster').classList.add('hit');
+ setTimeout(()=>$('bt-monster').classList.remove('hit'),550);
+ battleSetHp(BT_NEED-btStreak);
+ const stage=document.querySelector('.battle-stage');
+ // 攻击特效（从团团飞向怪兽，用 left 定位到中间偏右）
+ const fx=document.createElement('span');fx.className='battle-fx';fx.textContent='💥';
+ fx.style.left='45%';fx.style.bottom='60px';
+ stage.appendChild(fx);
+ setTimeout(()=>fx.remove(),600);
+ // 伤害数字（怪兽头顶）
+ const dmg=document.createElement('span');dmg.className='battle-dmg';dmg.textContent='-1';
+ stage.appendChild(dmg);
+ setTimeout(()=>dmg.remove(),900);
+}
+function battleWinMonster(){
+ btTotalBeaten++;
+ $('bt-monster').classList.add('defeated');
+ $('bt-feedback').textContent='🎉 打败了 '+BT_MONSTERS[btMonsterIndex%BT_MONSTERS.length].name+'！';
+ confetti();
+ $('bt-round').textContent='太棒了！下一只怪兽登场！';
+ setTimeout(()=>{
+  btStreak=0;
+  btMonsterIndex++;
+  battleShowMonster();
+  btIdx++;
+  battleNextWord();
+ },1500);
+}
+$('bt-typing').addEventListener('input',battleOnType);
 
 /* ---------- 错词本渲染 ---------- */
 function renderWrong(){const ul=$('wrong-list');ul.innerHTML='';
