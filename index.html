@@ -169,6 +169,7 @@
     .hw-cand { width:52px; height:52px; font-size:26px; }
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -855,49 +856,49 @@ function answerQuiz(btn,o,w){if(quizLocked)return;quizLocked=true;
 function nextQuiz(){quizIdx++;if(quizIdx>=quizQueue.length){alert('测验完成！成绩：本轮共 '+quizQueue.length+' 题 🎉');go('home');}else showQuiz();}
 function speakQ(){if(qCur)speak(qCur.en);}
 
-/* ---------- 手写字母识别（随屏手写，离线零依赖） ---------- */
-// 思路：手指/鼠标在 canvas 写字母 → 轨迹栅格化为 64x64 位图 → 与 26 个小写字母的
-//       标准字体参考位图做相似度匹配（Dice 系数）→ 取 top 候选填入空格。
-const HW_SIZE=64;                       // 识别栅格尺寸
+/* ---------- 手写字母识别（随屏手写，EMNIST 神经网络离线推理） ---------- */
+// 思路：手指/鼠标在 canvas 写字母 → 抬笔停顿 800ms 自动触发 → 预处理为 28x28 灰度
+//       → 用 onnxruntime-web 跑 EMNIST 模型（62 类，取小写 a-z 的 top 候选）→ 填入空格。
 const HW_ALPH='abcdefghijklmnopqrstuvwxyz';
-let hwRefs=null;                        // { 'a': [Uint8Array,...多字体], ... }
+const HW_LABELS=['0','1','2','3','4','5','6','7','8','9',
+ 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+ 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'];
+let hwSession=null;                     // ONNX InferenceSession
+let hwSessionReady=false;               // 模型是否已加载
+let hwLoading=false;                    // 是否正在加载
 let hwStrokes=[];                       // 当前手写的多段轨迹，每段是 [{x,y},...]
 let hwCur=null;                         // 当前正在画的这一段
 let hwCanvas=null,hwCtx=null;
 let hwPenOn=false;
-let hwGuessText='';                     // 当前识别出的字母（已填入的值）
+let hwGuessText='';                     // 当前已填入的字母
 let hwBound=false;
+let hwTimer=null;                       // 抬笔后的延迟识别计时器
+
+// 预加载模型（页面打开后、进入手写前就后台加载，减少等待）
+function hwLoadModel(){
+ if(hwLoading||hwSessionReady)return;
+ if(typeof ort==='undefined'){ // onnxruntime 未加载（CDN 失败）
+  hwHint('⚠️ 识别组件加载失败，请用「⌨️键盘」输入');
+  return;
+ }
+ hwLoading=true;
+ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+ ort.InferenceSession.create('./EMNIST.onnx',{executionProviders:['wasm']})
+  .then(s=>{hwSession=s;hwSessionReady=true;hwLoading=false;})
+  .catch(e=>{hwLoading=false;hwHint('⚠️ 识别模型加载失败，请用「⌨️键盘」输入');});
+}
+function hwHint(msg){const h=$('s-hw-hint');if(h)h.textContent=msg;}
+
 function hwInit(){
  hwCanvas=$('s-hw');if(!hwCanvas)return;
- // 按显示尺寸设置画布分辨率（2x 保证清晰）
+ // 按显示尺寸设置画布分辨率
  const w=hwCanvas.clientWidth||420;
  hwCanvas.width=w; hwCanvas.height=hwCanvas.clientHeight||180;
  hwCtx=hwCanvas.getContext('2d');
- hwCtx.lineWidth=Math.max(6,w*0.018); hwCtx.lineCap='round'; hwCtx.lineJoin='round';
+ hwCtx.lineWidth=Math.max(8,w*0.022); hwCtx.lineCap='round'; hwCtx.lineJoin='round';
  hwCtx.strokeStyle='#c97b93';
  if(!hwBound){bindHW(hwCanvas);hwBound=true;}
- hwBuildRefs();
-}
-function hwBuildRefs(){
- if(hwRefs)return;
- const cv=document.createElement('canvas');cv.width=HW_SIZE;cv.height=HW_SIZE;
- const c=cv.getContext('2d');
- hwRefs={};
- // 多字体模板：兼顾印刷体与手写体，提升小朋友手写的识别鲁棒性
- const fonts=['"Arial","Helvetica Neue",sans-serif','"Comic Sans MS","Segoe Print",cursive','"Georgia",serif'];
- c.textAlign='center';c.textBaseline='middle';
- for(let i=0;i<26;i++){
-  const ch=HW_ALPH[i];
-  const list=[];
-  fonts.forEach(f=>{
-   c.fillStyle='#000';c.fillRect(0,0,HW_SIZE,HW_SIZE);   // 黑底
-   c.font='bold '+(HW_SIZE*0.78)+'px '+f;
-   c.fillStyle='#fff';                                     // 白字
-   c.fillText(ch,HW_SIZE/2,HW_SIZE/2+2);
-   list.push(binarize(c.getImageData(0,0,HW_SIZE,HW_SIZE)));
-  });
-  hwRefs[ch]=list;
- }
+ hwLoadModel();
 }
 function bindHW(cv){
  cv.addEventListener('mousedown',e=>{hwPenDown(e.offsetX,e.offsetY);e.preventDefault();});
@@ -908,67 +909,100 @@ function bindHW(cv){
  cv.addEventListener('touchmove',e=>{if(hwPenOn){const t=e.touches[0];const r=cv.getBoundingClientRect();hwPenMove(t.clientX-r.left,t.clientY-r.top);e.preventDefault();}},{passive:false});
  cv.addEventListener('touchend',e=>{hwPenUp();e.preventDefault();});
 }
-function hwPenDown(x,y){if(spellLocked)return;hwPenOn=true;
- // 开始写新字母：清掉上一次的候选条
+function hwPenDown(x,y){
+ if(spellLocked)return;
+ if(hwTimer){clearTimeout(hwTimer);hwTimer=null;}   // 又开始写，取消上次的识别
+ hwPenOn=true;
  const box=$('s-hw-cands');if(box)box.innerHTML='';
- hwCur=[{x:x,y:y}];hwStrokes.push(hwCur);hwCtx.beginPath();hwCtx.moveTo(x,y);}
+ hwCur=[{x:x,y:y}];hwStrokes.push(hwCur);
+ hwCtx.beginPath();hwCtx.moveTo(x,y);
+}
 function hwPenMove(x,y){if(!hwPenOn||!hwCur)return;hwCur.push({x:x,y:y});hwCtx.lineTo(x,y);hwCtx.stroke();}
 function hwPenUp(){
  if(!hwPenOn)return; hwPenOn=false;
- if(!hwCur||hwCur.length<2){ // 太短（点一下）忽略
-  hwStrokes.pop();
+ if(!hwCur||hwCur.length<2){ hwStrokes.pop(); return; }  // 点一下，忽略
+ // 抬笔后延迟 800ms：如果这期间没有再下笔（多笔字母），才触发识别
+ if(hwTimer)clearTimeout(hwTimer);
+ hwTimer=setTimeout(()=>{hwTimer=null; hwDoRecognize();},800);
+}
+// 真正执行识别（异步）
+async function hwDoRecognize(){
+ if(spellLocked)return;
+ if(!hwSessionReady){ // 模型还没好，提示稍候
+  hwLoadModel();
+  hwHint('⏳ 识别模型加载中，稍等再写…');
   return;
  }
- // 手写结束 → 识别
- const ch=hwRecognize();
- if(ch){ hwCommit(ch); }
- else { hwClearInk(); }  // 低置信度：清画布笔迹，保留候选条让用户点选或重写
+ const pred=await hwPredict();
+ if(!pred){ hwHint('再写清楚一点哦～'); return; }
+ const {ch,score,cands}=pred;
+ hwShowCands(cands);
+ if(score<0.25){ // 置信度低：不自动填，让用户从候选里选
+  hwHint('没太看清，点下面候选或重写');
+  return;
+ }
+ hwCommit(ch);
 }
-// 栅格化手写轨迹 → 64x64 二值位图
-function hwRasterize(){
- const off=document.createElement('canvas');off.width=HW_SIZE;off.height=HW_SIZE;
+// 预处理 + 推理，返回 {ch, score, cands:[{ch,score}...]}
+async function hwPredict(){
+ const bmp=hwRasterize28(); if(!bmp)return null;
+ const input=new ort.Tensor('float32',bmp,[1,1,28,28]);
+ try{
+  const feeds={};
+  feeds[hwInputName()]=input;
+  const out=await hwSession.run(feeds);
+  const logits=out[hwOutputName()].data;
+  const proba=hwSoftmax(Array.from(logits));
+  // 只在小写字母（索引 36..61）里取 top 候选
+  const cands=[];
+  for(let i=36;i<62;i++){ cands.push({ch:HW_LABELS[i],score:proba[i]}); }
+  cands.sort((a,b)=>b.score-a.score);
+  const top=cands[0];
+  return {ch:top.ch, score:top.score, cands:cands.slice(0,3)};
+ }catch(e){ return null; }
+}
+// 输入/输出张量名（探测一次）
+let _hwInName=null,_hwOutName=null;
+function hwInputName(){ if(!_hwInName)_hwInName=hwSession.inputNames[0]||'input'; return _hwInName; }
+function hwOutputName(){ if(!_hwOutName)_hwOutName=hwSession.outputNames[0]||'output'; return _hwOutName; }
+// 手写轨迹 → 28x28 float32（EMNIST 输入约定：黑底白字、0-255 灰度、转置）
+function hwRasterize28(){
+ if(!hwStrokes.length)return null;
+ const S=200; // 高分辨率绘制区
+ const off=document.createElement('canvas');off.width=S;off.height=S;
  const c=off.getContext('2d');
- c.fillStyle='#000';c.fillRect(0,0,HW_SIZE,HW_SIZE);   // 黑底
- c.lineWidth=5;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#fff';  // 白笔画
- // 归一化：计算轨迹包围盒，缩放到画布内并居中
+ c.fillStyle='#000';c.fillRect(0,0,S,S);          // 黑底
+ c.lineWidth=Math.max(14,S*0.07);c.lineCap='round';c.lineJoin='round';c.strokeStyle='#fff';  // 白笔画
+ // 归一化包围盒 → 居中缩放到 S 内
  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
  hwStrokes.forEach(s=>s.forEach(p=>{if(p.x<minX)minX=p.x;if(p.y<minY)minY=p.y;if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y;}));
  const bw=maxX-minX, bh=maxY-minY;
- if(bw<4||bh<4)return null;
- const scale=Math.min((HW_SIZE*0.82)/bw,(HW_SIZE*0.82)/bh);
- const ox=(HW_SIZE-bw*scale)/2, oy=(HW_SIZE-bh*scale)/2;
+ if(bw<3||bh<3)return null;
+ const scale=Math.min((S*0.8)/bw,(S*0.8)/bh);
+ const ox=(S-bw*scale)/2, oy=(S-bh*scale)/2;
  const tx=x=>ox+(x-minX)*scale, ty=y=>oy+(y-minY)*scale;
  hwStrokes.forEach(s=>{c.beginPath();c.moveTo(tx(s[0].x),ty(s[0].y));for(let i=1;i<s.length;i++)c.lineTo(tx(s[i].x),ty(s[i].y));c.stroke();});
- return binarize(c.getImageData(0,0,HW_SIZE,HW_SIZE));
-}
-function binarize(img){ // 取 R 通道灰度，>128 记为 1
- const d=img.data, out=new Uint8Array(HW_SIZE*HW_SIZE);
- for(let i=0;i<HW_SIZE*HW_SIZE;i++){ out[i]=d[i*4]>128?1:0; }
+ // 轻度模糊 + 缩放到 28x28
+ const tmp=document.createElement('canvas');tmp.width=S;tmp.height=S;
+ const tctx=tmp.getContext('2d');tctx.filter='blur(6px)';tctx.drawImage(off,0,0);
+ const small=document.createElement('canvas');small.width=28;small.height=28;
+ const sctx=small.getContext('2d',{willReadFrequently:true});
+ sctx.drawImage(tmp,0,0,28,28);
+ const img=sctx.getImageData(0,0,28,28).data;
+ // 取 R 通道灰度（黑底白字：笔画=255，背景=0），不做标准化，直接 0-255
+ const flat=new Float32Array(28*28);
+ for(let i=0;i<28*28;i++){ flat[i]=img[i*4]; }
+ // 转置（EMNIST 推理需要）
+ const out=new Float32Array(28*28);
+ for(let y=0;y<28;y++)for(let x=0;x<28;x++){ out[x*28+y]=flat[y*28+x]; }
  return out;
 }
-function hwSimilarity(a,b){ // Dice 系数
- let inter=0, sa=0, sb=0;
- for(let i=0;i<a.length;i++){ if(a[i]&&b[i])inter++; if(a[i])sa++; if(b[i])sb++; }
- if(sa===0||sb===0)return 0;
- return 2*inter/(sa+sb);
+function hwSoftmax(a){
+ let mx=-1e9; for(let i=0;i<a.length;i++)if(a[i]>mx)mx=a[i];
+ let s=0; const e=a.map(v=>Math.exp(v-mx)); for(let i=0;i<e.length;i++)s+=e[i];
+ return e.map(v=>v/s);
 }
-function hwRecognize(){
- const bmp=hwRasterize(); if(!bmp)return null;
- hwBuildRefs();
- let scores=[];
- for(let i=0;i<26;i++){
-  const ch=HW_ALPH[i];
-  let best=0;
-  hwRefs[ch].forEach(ref=>{const s=hwSimilarity(bmp,ref);if(s>best)best=s;});
-  scores.push({ch:ch,s:best});
- }
- scores.sort((a,b)=>b.s-a.s);
- const top=scores[0];
- // 无论置信度高低都给出候选（top 3），低置信度时不自动填入，交给用户点选
- hwShowCands(scores.slice(0,3));
- if(top.s<0.30)return null;      // 太不像：不自动填，让用户从候选里选或重写
- return top.ch;
-}
+
 function hwShowCands(list){
  const box=$('s-hw-cands');if(!box)return;
  box.innerHTML='';
