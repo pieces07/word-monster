@@ -890,9 +890,9 @@ function hwBuildRefs(){
   const ch=HW_ALPH[i];
   const list=[];
   fonts.forEach(f=>{
-   c.clearRect(0,0,HW_SIZE,HW_SIZE);
+   c.fillStyle='#000';c.fillRect(0,0,HW_SIZE,HW_SIZE);   // 黑底
    c.font='bold '+(HW_SIZE*0.78)+'px '+f;
-   c.fillStyle='#000';
+   c.fillStyle='#fff';                                     // 白字
    c.fillText(ch,HW_SIZE/2,HW_SIZE/2+2);
    list.push(binarize(c.getImageData(0,0,HW_SIZE,HW_SIZE)));
   });
@@ -928,7 +928,8 @@ function hwPenUp(){
 function hwRasterize(){
  const off=document.createElement('canvas');off.width=HW_SIZE;off.height=HW_SIZE;
  const c=off.getContext('2d');
- c.lineWidth=5;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#000';
+ c.fillStyle='#000';c.fillRect(0,0,HW_SIZE,HW_SIZE);   // 黑底
+ c.lineWidth=5;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#fff';  // 白笔画
  // 归一化：计算轨迹包围盒，缩放到画布内并居中
  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
  hwStrokes.forEach(s=>s.forEach(p=>{if(p.x<minX)minX=p.x;if(p.y<minY)minY=p.y;if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y;}));
