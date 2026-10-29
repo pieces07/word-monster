@@ -1,0 +1,12 @@
+# 工作区临时文件
+.workbuddy/
+单词插画样稿/
+*.tmp
+*.log
+
+# 中文名的旧文件名（index.html 是唯一入口）
+单词小怪兽.html
+
+# 系统文件
+.DS_Store
+Thumbs.db
