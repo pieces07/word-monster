@@ -505,39 +505,7 @@ function speak(t){
  const url='https://dict.youdao.com/dictvoice?audio='+encodeURIComponent(t)+'&type='+type;
  _playUrl(url);
 }
-/* 整句发音：优先用浏览器语音合成（iPhone/电脑可读整句），不支持时退回有道逐词朗读（华为平板能出声） */
-let _ttsVoices=null;
-function _loadVoices(){
- if(_ttsVoices&&_ttsVoices.length)return _ttsVoices;
- try{_ttsVoices=window.speechSynthesis?speechSynthesis.getVoices():[];}catch(e){_ttsVoices=[];}
- if(_ttsVoices.length===0&&window.speechSynthesis){
-  try{speechSynthesis.getVoices();}catch(e){}
- }
- return _ttsVoices;
-}
-function _pickVoice(){
- const vs=_loadVoices();
- const want=ACCENT==='us'?'en-US':'en-GB';
- let v=vs.find(x=>x.lang&&x.lang.toLowerCase()===want.toLowerCase());
- if(!v)v=vs.find(x=>x.lang&&x.lang.toLowerCase().indexOf('en')===0);
- return v||null;
-}
-function _ttsSpeak(t,onDone){
- try{
-  const u=new SpeechSynthesisUtterance(t);
-  const v=_pickVoice();if(v)u.voice=v;
-  u.lang=ACCENT==='us'?'en-US':'en-GB';
-  u.rate=0.85;
-  let started=false;
-  u.onstart=()=>{started=true;};
-  u.onend=()=>{if(onDone)onDone();};
-  u.onerror=()=>{if(!started&&onDone)onDone();};
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-  // 若 600ms 内未开始，判定失败走 fallback
-  setTimeout(()=>{if(!started&&onDone)onDone();},600);
- }catch(e){ if(onDone)onDone(); }
-}
+/* 整句发音 fallback：有道逐词朗读（本地音频缺失时兜底） */
 function _youdaoWordChain(t){
  // 把句子拆成单词，逐个用有道朗读（有道读不了整句，但单词都能读）
  const words=t.replace(/[^A-Za-z' -]/g,' ').split(/\s+/).filter(Boolean);
@@ -562,15 +530,23 @@ function _youdaoWordChain(t){
  };
  next();
 }
-function speakSentence(t){
- if(!t)return;
- const canTTS=(typeof window!=='undefined')&&window.speechSynthesis&&('SpeechSynthesisUtterance' in window);
- if(canTTS){
-  // 尝试浏览器 TTS，失败则退回有道逐词
-  _ttsSpeak(t,()=>{_youdaoWordChain(t);});
- }else{
-  _youdaoWordChain(t);
- }
+function speakSentence(idx){
+ // 播放本地预生成音频（Edge TTS 整句，音质自然清晰），idx 为全局句子序号
+ if(!idx)return;
+ const tag='d'+String(idx).padStart(2,'0')+'_'+(ACCENT==='us'?'us':'uk');
+ const url='audio/'+tag+'.mp3';
+ try{
+  const a=_mkAudio();
+  a.pause();
+  let played=false;
+  const play=()=>{if(played)return;played=true;const p=a.play();if(p&&p.catch)p.catch(()=>{});};
+  a.oncanplay=play;
+  a.onloadeddata=play;
+  a.onerror=()=>{_youdaoWordChain(dlgCur&&dlgCur.en||'');};
+  a.src=url;
+  a.load();
+  setTimeout(play,300);
+ }catch(e){}
 }
 function confetti(){const e=['🎉','⭐','🌈','🎊','💖'];for(let i=0;i<14;i++){const s=document.createElement('div');s.className='confetti';s.textContent=e[i%e.length];s.style.left=Math.random()*95+'vw';s.style.animationDelay=Math.random()*0.6+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),3000);}}
 
@@ -1008,7 +984,8 @@ function startDialog(){
  // 按当前背诵范围选单元，再取其中的句子
  const units=range.length?range:[1,2,3,4,5,6];
  const pool=[];
- DIALOGS.forEach(g=>{if(units.includes(g.u)){g.d.forEach(p=>pool.push({en:p[0],cn:p[1],u:g.u,t:g.t}));}});
+ let gidx=0; // 全局句子序号，对应 audio/d{NN}_xx.mp3
+ DIALOGS.forEach(g=>{g.d.forEach(p=>{gidx++;if(units.includes(g.u)){pool.push({en:p[0],cn:p[1],u:g.u,t:g.t,idx:gidx});}});});
  if(!pool.length){uiToast('所选单元里没有对话句子哦！');return;}
  dlgQueue=shuffle(pool);dlgIdx=0;go('dialog');showDlg();
 }
@@ -1029,7 +1006,7 @@ function showDlg(){dlgLocked=false;const p=dlgQueue[dlgIdx];dlgCur=p;
    $('dlg-next').classList.remove('hidden');};
   box.appendChild(b);});
 }
-function speakDlg(){if(dlgCur)speakSentence(dlgCur.en);}
+function speakDlg(){if(dlgCur)speakSentence(dlgCur.idx);}
 function nextDlg(){dlgIdx++;if(dlgIdx>=dlgQueue.length){uiToast('对话练习完成！你太棒啦 💬🎉');go('home');}else showDlg();}
 
 /* ---------- 错词本渲染 ---------- */
