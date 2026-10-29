@@ -32,6 +32,9 @@
   .speak-btn.dark { background:#fbeff2; color:#c97b93; }
   .speak-pill { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:999px; padding:12px 22px; background:#f9e6ec; color:#c97b93; font-size:16px; font-weight:bold; cursor:pointer; white-space:nowrap; box-shadow:0 3px 0 rgba(0,0,0,.04); }
   .speak-pill:active { transform:scale(.97); }
+  .accent-tag { display:inline-flex; align-items:center; gap:4px; border:2px solid #f2dde3; background:#fff; color:#b98a98; border-radius:999px; padding:4px 12px; font-size:13px; font-weight:bold; cursor:pointer; margin-left:6px; white-space:nowrap; box-shadow:0 2px 0 rgba(0,0,0,.03); }
+  .accent-tag:active { transform:scale(.95); }
+  .accent-row { display:flex; align-items:center; justify-content:center; gap:4px; flex-wrap:wrap; }
   .progress-bar { height:12px; background:#f6e3e8; border-radius:8px; margin:10px 0 16px; overflow:hidden; }
   .progress-fill { height:100%; background:linear-gradient(90deg,#f2a7c1,#e88fb0); border-radius:8px; transition:width .3s; }
   .judge { display:flex; gap:12px; }
@@ -148,7 +151,7 @@
     <div class="syl-card" id="flash">
       <div class="syl-emoji" id="f-emoji"></div>
       <div class="syl-word" id="f-word"></div>
-      <div class="syl-phonetic"><button class="spk" onclick="speakCurrent(event)">🔊</button><span id="f-phonetic"></span></div>
+      <div class="syl-phonetic"><button class="spk" onclick="speakCurrent(event)">🔊</button><span id="f-phonetic"></span><button class="accent-tag" onclick="event.stopPropagation();toggleAccent()">🇺🇸 美音</button></div>
       <div class="syl-meaning" id="f-meaning"></div>
       <div class="syl-cards" id="f-sylcards"></div>
     </div>
@@ -166,7 +169,7 @@
     <div class="card">
       <div id="q-mode-tip" style="text-align:center; font-size:14px; color:#b5989d">选出正确的中文意思</div>
       <div class="quiz-word" id="q-word"></div>
-      <button class="speak-btn dark" id="q-speak" onclick="speakQ()" style="display:none; margin:0 auto 10px">🔊</button>
+      <div class="accent-row"><button class="speak-btn dark" id="q-speak" onclick="speakQ()" style="display:none; margin:0 0 10px">🔊</button><button class="accent-tag" id="q-accent" onclick="toggleAccent()" style="display:none; margin:0 0 10px">🇺🇸 美音</button></div>
       <div id="q-opts"></div>
       <div class="feedback" id="q-feedback"></div>
       <button class="btn b4 hidden" id="q-next" onclick="nextQuiz()">下一题 →</button>
@@ -181,7 +184,7 @@
       <div class="drill-bar hidden" id="s-drill-bar"></div>
       <div class="drill-steps hidden" id="s-drill-steps"></div>
       <div class="cn-clue" id="s-clue"></div>
-      <div style="text-align:center; margin:0 auto 12px"><button class="speak-pill" onclick="speakSpell()">🔊 听发音</button></div>
+      <div style="text-align:center; margin:0 auto 12px" class="accent-row"><button class="speak-pill" onclick="speakSpell()">🔊 听发音</button><button class="accent-tag" onclick="toggleAccent()">🇺🇸 美音</button></div>
       <div style="display:flex; gap:8px; margin-bottom:14px">
         <button class="btn b2" id="s-mode-keys" onclick="setSpellMode('keys')" style="margin:0; font-size:15px; padding:10px">🀫 打乱字母</button>
         <button class="btn b6" id="s-mode-type" onclick="setSpellMode('type')" style="margin:0; font-size:15px; padding:10px">⌨️ 自己输入</button>
@@ -203,7 +206,7 @@
     <div class="card" style="text-align:center">
       <div id="dlg-tip" style="text-align:center; font-size:14px; color:#b5989d; margin-bottom:4px">听句子，选出正确的中文意思</div>
       <div class="quiz-word" id="dlg-en" style="font-size:30px; line-height:1.35"></div>
-      <button class="speak-btn dark" id="dlg-speak" onclick="speakDlg()" style="margin:0 auto 12px">🔊 听发音</button>
+      <div class="accent-row" style="margin:0 auto 12px"><button class="speak-btn dark" id="dlg-speak" onclick="speakDlg()">🔊 听发音</button><button class="accent-tag" onclick="toggleAccent()">🇺🇸 美音</button></div>
       <div id="dlg-opts"></div>
       <div class="feedback" id="dlg-feedback"></div>
       <button class="btn b4 hidden" id="dlg-next" onclick="nextDlg()">下一句 →</button>
@@ -464,7 +467,24 @@ function renderSylCards(en,el){const s=syllablesFor(en);el.innerHTML='';
   const e=document.createElement('div');e.className='s-en';e.textContent=seg[0];
   const p=document.createElement('div');p.className='s-ph';p.textContent='/'+seg[1]+'/';
   c.appendChild(e);c.appendChild(p);el.appendChild(c);});}
-function speak(t){try{const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=0.8;speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){}}
+/* 发音：有道词典真人发音（type=1 英音 / type=2 美音），默认美音 */
+let ACCENT=localStorage.getItem('mw_accent')||'us'; // 'us' 美音 | 'uk' 英音
+function saveAccent(){localStorage.setItem('mw_accent',ACCENT);}
+function toggleAccent(){ACCENT=ACCENT==='us'?'uk':'us';saveAccent();syncAccentUI();}
+function syncAccentUI(){
+ document.querySelectorAll('.accent-tag').forEach(el=>{el.textContent=ACCENT==='us'?'🇺🇸 美音':'🇬🇧 英音';});
+}
+let _spkAudio=null;
+function speak(t){
+ if(!t)return;
+ const type=ACCENT==='us'?'2':'1';
+ const url='https://dict.youdao.com/dictvoice?audio='+encodeURIComponent(t)+'&type='+type;
+ try{
+  if(_spkAudio){_spkAudio.pause();_spkAudio=null;}
+  _spkAudio=new Audio(url);
+  _spkAudio.play().catch(()=>{});
+ }catch(e){}
+}
 function confetti(){const e=['🎉','⭐','🌈','🎊','💖'];for(let i=0;i<14;i++){const s=document.createElement('div');s.className='confetti';s.textContent=e[i%e.length];s.style.left=Math.random()*95+'vw';s.style.animationDelay=Math.random()*0.6+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),3000);}}
 
 function go(p){document.querySelectorAll('[id^=page-]').forEach(e=>e.classList.add('hidden'));$('page-'+p).classList.remove('hidden');window.scrollTo(0,0);
@@ -680,7 +700,7 @@ function startQuiz(mode){quizMode=mode;
  quizQueue=shuffle(pool);quizIdx=0;go('quiz');showQuiz();}
 function showQuiz(){quizLocked=false;const w=quizQueue[quizIdx];qCur=w;
  $('q-word').textContent=emojiFor(w.en)+' '+w.en;$('q-feedback').textContent='';$('q-next').classList.add('hidden');
- $('q-mode-tip').textContent='选出「'+w.en+'」的意思';$('q-speak').style.display='none';
+ $('q-mode-tip').textContent='选出「'+w.en+'」的意思';$('q-speak').style.display='none';$('q-accent').style.display='none';
  $('quiz-progress').style.width=(quizIdx/quizQueue.length*100)+'%';
  const opts=shuffle([w.cn,...shuffle(words.filter(x=>x.cn!==w.cn)).slice(0,3).map(x=>x.cn)]);
  const box=$('q-opts');box.innerHTML='';
@@ -880,7 +900,7 @@ function showListen(){listenMode=true;quizLocked=false;const w=listenQueue[liste
  $('q-word').textContent='🔊';$('q-mode-tip').textContent='听发音，选出你听到的单词';
  $('q-feedback').textContent='';$('q-next').classList.add('hidden');
  $('quiz-progress').style.width=(listenIdx/listenQueue.length*100)+'%';
- $('q-speak').style.display='block';
+ $('q-speak').style.display='block';$('q-accent').style.display='inline-flex';
  const opts=shuffle([w.en,...shuffle(words.filter(x=>x.en!==w.en)).slice(0,3).map(x=>x.en)]);
  const box=$('q-opts');box.innerHTML='';
  opts.forEach(o=>{const b=document.createElement('button');b.className='opt';b.textContent=o;
