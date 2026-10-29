@@ -342,11 +342,11 @@
       <div class="battle-monster-hp"><div class="fill" id="bt-hp"></div></div>
       <div class="battle-arena">
         <div class="battle-fighter hero" id="bt-hero">
-          <div class="avatar" id="bt-hero-avatar"><img src="img/hero.png" alt="团团"></div>
+          <div class="avatar" id="bt-hero-avatar"><img src="img/hero.png?v=2" alt="团团"></div>
           <div class="name">团团</div>
         </div>
         <div class="battle-fighter monster" id="bt-monster">
-          <div class="avatar" id="bt-monster-avatar"><img src="img/monster1.png" alt="小怪兽"></div>
+          <div class="avatar" id="bt-monster-avatar"><img src="img/monster1.png?v=2" alt="小怪兽"></div>
           <div class="name" id="bt-monster-label">小怪兽</div>
         </div>
       </div>
@@ -1533,16 +1533,16 @@ function nextDlg(){dlgIdx++;if(dlgIdx>=dlgQueue.length){uiToast('对话练习完
 // 战斗场景：一边团团、一边怪兽，背对一个单词攻击一次，连续10个打败怪兽出下一只
 const BT_NEED=10;                        // 连续背对 10 个打败一只怪兽
 const BT_MONSTERS=[                      // 依次登场的怪兽（img 图片，暂无图时用 emoji 兜底）
-  {img:'img/monster1.png',emoji:'👾',name:'小绿怪'},
-  {img:'img/monster2.png',emoji:'👹',name:'红角怪'},
-  {img:'img/monster1.png',emoji:'👻',name:'小幽灵'},
-  {img:'img/monster2.png',emoji:'🐙',name:'八爪怪'},
-  {img:'img/monster1.png',emoji:'🐲',name:'小飞龙'},
-  {img:'img/monster2.png',emoji:'🤖',name:'铁皮怪'},
-  {img:'img/monster1.png',emoji:'🦖',name:'小恐龙'},
-  {img:'img/monster2.png',emoji:'🐍',name:'长蛇怪'},
-  {img:'img/monster1.png',emoji:'🧟',name:'木乃伊'},
-  {img:'img/monster2.png',emoji:'🐺',name:'大灰狼'}
+  {img:'img/monster1.png?v=2',emoji:'👾',name:'小绿怪'},
+  {img:'img/monster2.png?v=2',emoji:'👹',name:'红角怪'},
+  {img:'img/monster1.png?v=2',emoji:'👻',name:'小幽灵'},
+  {img:'img/monster2.png?v=2',emoji:'🐙',name:'八爪怪'},
+  {img:'img/monster1.png?v=2',emoji:'🐲',name:'小飞龙'},
+  {img:'img/monster2.png?v=2',emoji:'🤖',name:'铁皮怪'},
+  {img:'img/monster1.png?v=2',emoji:'🦖',name:'小恐龙'},
+  {img:'img/monster2.png?v=2',emoji:'🐍',name:'长蛇怪'},
+  {img:'img/monster1.png?v=2',emoji:'🧟',name:'木乃伊'},
+  {img:'img/monster2.png?v=2',emoji:'🐺',name:'大灰狼'}
 ];
 let btQueue=[],btIdx=0;                  // 出题队列与游标
 let btMonsterIndex=0;                    // 当前第几只怪兽（从 0 起）
