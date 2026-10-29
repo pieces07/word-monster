@@ -936,11 +936,13 @@ async function hwDoRecognize(){
  const pred=await hwPredict();
  if(!pred){ hwHint('再写清楚一点哦～'); return; }
  const {ch,score,cands}=pred;
- hwShowCands(cands);
- if(score<0.25){ // 置信度低：不自动填，让用户从候选里选
+ if(score<0.25){ // 置信度低：不自动填，显示候选让用户点选（点选=填入当前空格）
+  hwShowCands(cands);
   hwHint('没太看清，点下面候选或重写');
   return;
  }
+ // 高置信度：直接填入，并清空候选（避免残留候选被误点覆盖）
+ hwShowCands([]);
  hwCommit(ch);
 }
 // 预处理 + 推理，返回 {ch, score, cands:[{ch,score}...]}
@@ -1009,11 +1011,12 @@ function hwShowCands(list){
  list.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='hw-cand';b.textContent=c.ch;
   b.onclick=()=>hwReplace(c.ch);box.appendChild(b);});
 }
-function hwReplace(ch){ // 把当前格替换成 ch
+function hwReplace(ch){ // 点候选：填入当前空格（append，不是替换已填的字母）
  if(spellLocked)return;
- // 用当前已填内容，替换最后一位
  const cur=hwGuess();
- hwSetGuess(cur.slice(0,-1)+ch);
+ if(cur.length>=spWord.en.length)return;   // 已填满，忽略
+ hwSetGuess(cur+ch);
+ hwShowCands([]);   // 填完清候选，避免残留误点
 }
 function hwCommit(ch){ // 识别出字母，填入当前空格
  if(spellLocked)return;
@@ -1054,6 +1057,11 @@ let hwUseKbd=false;  // false=手写（默认），true=键盘
 
 
 /* ---------- 拼写 ---------- */
+// 把某个元素平滑滚动到可视区内（平板横屏时拼写页较长，避免"下一题"按钮被遮挡）
+function scrollToView(el){
+ if(!el)return;
+ try{ el.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){ el.scrollIntoView(); }
+}
 let spWord=null,spInput=[],spKeys=[],spellQueue=[],spellIdx=0,spellLetters=[],spellLocked=false,keyOrder=[];
 let spMode=localStorage.getItem('mw_spellmode')||'type';  // 独立拼写闯关默认'自己输入'（已去掉'打乱字母'）；背新词 drill 内部会按遍数自动切换
 
@@ -1114,7 +1122,8 @@ function showSpellDrill(){spWord=spellDrill.word;spellLetters=spWord.en.split(''
  const ti=$('s-typing');ti.value='';
  applyHWMode();
  renderSlots();
- if(spMode==='keys')renderKeys();}
+ if(spMode==='keys')renderKeys();
+ scrollToView($('s-clue'));}
 function spellDrillCorrect(){
  const r=spellDrill.round;
  if(r+1<DRILL_KEYS+DRILL_TYPE){
@@ -1143,7 +1152,8 @@ function finishDrill(){const w=spellDrill.word;
  $('s-hint').classList.add('hidden');
  $('s-next').textContent='下一个单词 →';
  $('s-next').classList.remove('hidden');
- drillDone=true;}
+ drillDone=true;
+ setTimeout(()=>scrollToView($('s-next')),60);}
 function spellDrillWrong(){const w=spellDrill.word;
  // 拼错：计入错词本（去重）
  if(!wrongList.some(x=>x.en===w.en))wrongList.push(w);
@@ -1172,7 +1182,8 @@ function showSpell(keepMode){spWord=spellQueue[spellIdx];spellLetters=spWord.en.
  hwGuessText='';hwClear();
  const ti=$('s-typing');ti.value='';
  applyHWMode();
- renderSlots();}
+ renderSlots();
+ scrollToView($('s-clue'));}
 // 当前已拼出的内容
 function getGuess(){return spMode==='keys'?spInput.map(i=>spellLetters[i]).join(''):hwGuessText;}
 function renderSlots(){const arr=$('s-slots');arr.innerHTML='';
@@ -1203,7 +1214,8 @@ function checkSpell(){const guess=getGuess();
    setTimeout(function(){spellDrillCorrect();},500);return;}
   fb.textContent='🎉 拼对啦！'+spWord.en+' = '+spWord.cn;
   markMastered(spWord.en);
-  wrongList=wrongList.filter(x=>x.en!==spWord.en);doneToday.push(spWord.en);today.count++;save();confetti();speak(spWord.en);$('s-next').classList.remove('hidden');}
+  wrongList=wrongList.filter(x=>x.en!==spWord.en);doneToday.push(spWord.en);today.count++;save();confetti();speak(spWord.en);$('s-next').classList.remove('hidden');
+  setTimeout(()=>scrollToView($('s-next')),60);}
  else{if(spellDrill){ // 闯关模式拼错：计入错词本，清空重来，直到拼对
    spellDrillWrong();
    fb.textContent='❌ 拼错了，已加入错词本，再试一次！';
