@@ -163,7 +163,7 @@
         <div class="stat"><b id="task-new">0/5</b><span>背新单词</span></div>
         <div class="stat"><b id="task-review">0</b><span>复习旧词</span></div>
         <div class="stat"><b id="stat-today">0</b><span>今日已学</span></div>
-        <div class="stat"><b id="stat-mastered">0</b><span>累计拼会</span></div>
+        <div class="stat"><b id="stat-mastered">0</b><span>累计背会</span></div>
       </div>
       <button class="btn b4" id="btn-task-new" onclick="startLearn()">🌱 背今天的 5 个新单词</button>
       <button class="btn b2" id="btn-task-review" onclick="startReview()">🔁 复习到期单词</button>
@@ -308,7 +308,7 @@ let doneToday=JSON.parse(localStorage.getItem(LS_D)||'[]');
 let today=JSON.parse(localStorage.getItem(LS_T)||'{"date":"","count":0}');
 let task=JSON.parse(localStorage.getItem(LS_TASK)||'null');
 let range=JSON.parse(localStorage.getItem('mw_range')||'[]'); // [] = 全部单元
-let mastered=JSON.parse(localStorage.getItem(LS_M)||'[]');      // 累计拼会过的单词 en 列表（去重），length 即累计拼会数
+let mastered=JSON.parse(localStorage.getItem(LS_M)||'[]');      // 累计背会过的单词 en 列表（去重），length 即累计背会数
 const dstr=new Date().toISOString().slice(0,10);
 if(today.date!==dstr){today={date:dstr,count:0};doneToday=[];save();}
 if(!task||task.date!==dstr)task={date:dstr,newDone:[],reviewDone:[]};
@@ -811,8 +811,10 @@ function startQuiz(mode){quizMode=mode;
  if(!pool.length){alert('词库是空的，先导入单词吧！');go('manage');return;}
  quizQueue=shuffle(pool);quizIdx=0;go('quiz');showQuiz();}
 function showQuiz(){quizLocked=false;const w=quizQueue[quizIdx];qCur=w;
- $('q-word').textContent=emojiFor(w.en)+' '+w.en;$('q-feedback').textContent='';$('q-next').classList.add('hidden');
- $('q-mode-tip').textContent='选出「'+w.en+'」的意思';$('q-speak').style.display='none';$('q-accent').style.display='none';
+ $('q-word').textContent=emojiFor(w.en)+' '+w.en;$('q-word').style.cursor='pointer';$('q-word').title='点击发音';
+ $('q-word').onclick=()=>speakQ();
+ $('q-feedback').textContent='';$('q-next').classList.add('hidden');
+ $('q-mode-tip').textContent='选出「'+w.en+'」的意思';$('q-speak').style.display='block';$('q-accent').style.display='inline-flex';
  $('quiz-progress').style.width=(quizIdx/quizQueue.length*100)+'%';
  const opts=shuffle([w.cn,...shuffle(words.filter(x=>x.cn!==w.cn)).slice(0,3).map(x=>x.cn)]);
  const box=$('q-opts');box.innerHTML='';
@@ -1001,7 +1003,8 @@ function startListen(){const lpool=rangeWords(words);
  listenMode=true;showListen();}
 let listenMode=false;
 function showListen(){listenMode=true;quizLocked=false;const w=listenQueue[listenIdx];qCur=w;
- $('q-word').textContent='🔊';$('q-mode-tip').textContent='听发音，选出你听到的单词';
+ $('q-word').textContent='🔊';$('q-word').style.cursor='default';$('q-word').title='';$('q-word').onclick=null;
+ $('q-mode-tip').textContent='听发音，选出你听到的单词';
  $('q-feedback').textContent='';$('q-next').classList.add('hidden');
  $('quiz-progress').style.width=(listenIdx/listenQueue.length*100)+'%';
  $('q-speak').style.display='block';$('q-accent').style.display='inline-flex';
