@@ -196,7 +196,7 @@
   @keyframes breath { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
   /* 攻击动画：团团向前冲 + 微微跳起 */
   .battle-fighter.hero.attack .avatar { animation:heroAttack .5s ease; }
-  @keyframes heroAttack { 0%{transform:translateX(0) translateY(0) scale(1)} 35%{transform:translateX(70px) translateY(-14px) scale(1.08) rotate(-6deg)} 60%{transform:translateX(90px) translateY(0) scale(1)} 100%{transform:translateX(0) translateY(0) scale(1)} }
+  @keyframes heroAttack { 0%{transform:translateX(0) translateY(0) scale(1)} 35%{transform:translateX(46px) translateY(-10px) scale(1.06) rotate(-6deg)} 60%{transform:translateX(56px) translateY(0) scale(1)} 100%{transform:translateX(0) translateY(0) scale(1)} }
   /* 攻击时团团自带光晕 */
   .battle-fighter.hero.attack .avatar { filter:drop-shadow(0 0 14px rgba(255,200,90,.9)); }
   /* 怪兽受击：后退 + 抖动 + 闪红 */
@@ -221,10 +221,42 @@
   .battle-question { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:12px; }
   .battle-question .speak-pill { font-size:16px; padding:11px 20px; }
   .battle-hp-tip { text-align:center; font-size:13px; color:#b5989d; margin-bottom:4px; }
+
+  /* 战斗页专属紧凑布局：让「战斗场景 + 答题区 + 手写」在平板竖屏一屏内放下，无需下拉 */
+  #page-battle .battle-stage { padding:10px 12px 10px; margin-bottom:10px; border-radius:20px; }
+  #page-battle .battle-top { margin-bottom:4px; }
+  #page-battle .battle-monster-label, #page-battle .battle-level { font-size:12px; }
+  #page-battle .battle-monster-hp { height:10px; margin-bottom:6px; border-radius:6px; }
+  #page-battle .battle-monster-hp .fill { border-radius:6px; }
+  #page-battle .battle-arena { min-height:110px; gap:6%; padding:0; }
+  #page-battle .battle-fighter .avatar img { width:78px; height:78px; }
+  #page-battle .battle-fighter.hero .avatar img { width:72px; height:72px; }
+  #page-battle .battle-fighter .name { font-size:11px; margin-top:3px; padding:1px 8px; }
+  #page-battle .battle-round { font-size:12px; margin-bottom:2px; }
+  #page-battle .battle-cn { font-size:22px; margin:4px 0 2px; }
+  #page-battle .battle-question { margin-bottom:6px; }
+  #page-battle .battle-question .speak-pill { font-size:15px; padding:8px 16px; }
+  #page-battle .slots { margin:8px 0; gap:6px; }
+  #page-battle .hw-wrap { gap:6px; margin:2px 0 8px; }
+  #page-battle .hw-canvas { height:100px; border-radius:16px; }
+  #page-battle .hw-hint { font-size:12px; }
+  #page-battle .hw-cands { min-height:36px; gap:6px; }
+  #page-battle .hw-cand { width:38px; height:38px; font-size:19px; border-radius:10px; }
+  #page-battle .hw-ctrl { gap:6px; }
+  #page-battle .hw-ctrl button { padding:8px 12px; font-size:14px; border-radius:12px; }
+  #page-battle .hw-mode-toggle { margin:2px 0 8px; }
+  #page-battle .hw-mode-toggle .hw-kbd { padding:8px 14px; font-size:14px; }
+  #page-battle .feedback { font-size:14px; min-height:18px; }
+
   @media (min-width:900px){
     .battle-fighter .avatar img { width:180px; height:180px; }
     .battle-fighter.hero .avatar img { width:165px; height:165px; }
     .battle-arena { min-height:260px; }
+    /* 大屏恢复战斗场景正常尺寸，但仍保持合理 */
+    #page-battle .battle-arena { min-height:200px; }
+    #page-battle .battle-fighter .avatar img { width:150px; height:150px; }
+    #page-battle .battle-fighter.hero .avatar img { width:140px; height:140px; }
+    #page-battle .hw-canvas { height:150px; }
   }
 </style>
 
