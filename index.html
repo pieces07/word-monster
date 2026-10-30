@@ -63,6 +63,8 @@
   .syl-meaning .pos-tag { display:inline-block; font-size:14px; font-style:italic; color:#a87a8c; background:#f9e6ec; border-radius:8px; padding:1px 8px; margin-right:8px; vertical-align:2px; font-weight:600; }
   .syl-pos { font-size:14px; color:#e8b58a; font-weight:bold; }
   .syl-emoji { font-size:72px; line-height:1; margin:10px 0 6px; }
+  .syl-emoji img.wpic { display:block; width:150px; height:150px; object-fit:contain; margin:0 auto; border-radius:18px; }
+  img.wpic-sm { display:inline-block; width:34px; height:34px; object-fit:contain; vertical-align:middle; margin-right:6px; border-radius:8px; }
   .syl-cards { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:12px 0 4px; }
   .syl-chip { min-width:60px; padding:10px 12px; border-radius:16px; color:#fff; text-align:center; box-shadow:0 3px 8px rgba(0,0,0,.08); }
   .syl-chip .s-en { font-size:22px; font-weight:900; line-height:1.1; }
@@ -234,6 +236,7 @@
   #page-battle .battle-fighter .name { font-size:11px; margin-top:3px; padding:1px 8px; }
   #page-battle .battle-round { font-size:12px; margin-bottom:2px; }
   #page-battle .battle-cn { font-size:22px; margin:4px 0 2px; }
+  #page-battle .battle-cn img.wpic-sm { width:30px; height:30px; }
   #page-battle .battle-question { margin-bottom:6px; }
   #page-battle .battle-question .speak-pill { font-size:15px; padding:8px 16px; }
   #page-battle .slots { margin:8px 0; gap:6px; }
@@ -531,6 +534,23 @@ const EMOJI={
 'whose':'❓','sweater':'🧥','sock':'🧦','mine':'👤','wear':'👕','shirt':'👔','coat':'🧥','dress':'👗','which':'❓','season':'🍂','winter':'❄️','snow':'❄️','get together':'🎉','spring':'🌸','summer':'☀️','autumn':'🍁','t-shirt':'👕','fall':'🍂','leaf':'🍃','glove':'🧤','then':'⏭️'
 };
 function emojiFor(en){return EMOJI[String(en).toLowerCase()]||'🔤';}
+/* 单词配图（豆包卡通插画）：有图返回相对路径，无图返回空字符串 */
+function wordImg(en){const k=String(en).toLowerCase().trim();return WORD_IMG[k]?('img/words/'+WORD_IMG[k]):'';}
+/* 单词 → 图片文件名（小写英文，空格/连字符统一为 -） */
+const WORD_IMG={
+'pe':'pe.png','job':'job.png','doctor':'doctor.png','farmer':'farmer.png','nurse':'nurse.png',
+'office worker':'office-worker.png','factory worker':'factory-worker.png','busy':'busy.png','tired':'tired.png',
+'chore':'chore.png','cook':'cook.png','clean':'clean.png','room':'room.png','look after':'look-after.png',
+'sweep':'sweep.png','floor':'floor.png','together':'together.png','people':'people.png','child':'child.png'
+};
+/* 把容器 el 填成「有图则图、无图则 emoji」；大图版（learn 页） */
+function setWordMedia(el,en){const p=wordImg(en);el.innerHTML='';
+ if(p){const im=document.createElement('img');im.className='wpic';im.src=p;im.alt=en;im.onerror=()=>{el.innerHTML='';el.textContent=emojiFor(en);};el.appendChild(im);}
+ else{el.textContent=emojiFor(en);}}
+/* 小图版：返回「img 元素 或 emoji 字符串」，供行内拼接使用 */
+function wordMediaNode(en){const p=wordImg(en);
+ if(p){const im=document.createElement('img');im.className='wpic-sm';im.src=p;im.alt=en;im.onerror=()=>{im.replaceWith(document.createTextNode(emojiFor(en)));};return im;}
+ return document.createTextNode(emojiFor(en));}
 /* 单词音节拆分 + 音标（自然拼读）：每项 [字母音节, 音标音节]，一一对应用于着色 */
 const SYLL = {
 "PE": [["P","piː"], ["E","iː"]],
@@ -864,7 +884,7 @@ function renderManage(){$('manage-count').textContent=words.length;
  const ul=$('all-list');ul.innerHTML='';$('all-empty').classList.toggle('hidden',words.length>0);
  words.forEach((w,i)=>{const li=document.createElement('li');const sp=document.createElement('span');
   if(w.unit){const t=document.createElement('span');t.className='utag';t.textContent='U'+w.unit;sp.appendChild(t);}
-  const b=document.createElement('b');b.textContent=emojiFor(w.en)+' '+w.en;sp.appendChild(b);
+  const b=document.createElement('b');b.appendChild(wordMediaNode(w.en));b.appendChild(document.createTextNode(' '+w.en));sp.appendChild(b);
   sp.appendChild(document.createTextNode(' — '+(w.cn||'')));
   li.appendChild(sp);
   const d=document.createElement('button');d.className='del';d.textContent='删除';d.onclick=()=>{words.splice(i,1);save();renderManage();};li.appendChild(d);ul.appendChild(li);});}
@@ -933,7 +953,7 @@ function startBrowse(){learnMode='browse';
  learnQueue=pool;learnIdx=0;go('learn');showCard();}
 function showCard(){const w=learnQueue[learnIdx];const f=$('flash');
  f.classList.remove('showcn');
- $('f-emoji').textContent=emojiFor(w.en);
+ setWordMedia($('f-emoji'),w.en);
  renderSylWord(w.en,$('f-word'));
  renderSylPhonetic(w.en,$('f-phonetic'));
  const pos=posFor(w.en);
@@ -974,7 +994,7 @@ function startQuiz(mode){quizMode=mode;
  if(!pool.length){alert('词库是空的，先导入单词吧！');go('manage');return;}
  quizQueue=shuffle(pool);quizIdx=0;go('quiz');showQuiz();}
 function showQuiz(){quizLocked=false;const w=quizQueue[quizIdx];qCur=w;
- $('q-word').textContent=emojiFor(w.en)+' '+w.en;$('q-word').style.cursor='pointer';$('q-word').title='点击发音';
+ $('q-word').innerHTML='';$('q-word').appendChild(wordMediaNode(w.en));$('q-word').appendChild(document.createTextNode(' '+w.en));$('q-word').style.cursor='pointer';$('q-word').title='点击发音';
  $('q-word').onclick=()=>speakQ();
  $('q-feedback').textContent='';$('q-next').classList.add('hidden');
  $('q-mode-tip').textContent='选出「'+w.en+'」的意思';$('q-speak').style.display='block';$('q-accent').style.display='inline-flex';
@@ -1394,7 +1414,7 @@ function showSpellDrill(){spWord=spellDrill.word;spellLetters=spWord.en.split(''
  spInput=[];spKeys=spellLetters.map((_,i)=>i);
  keyOrder=shuffle(spKeys.map((_,i)=>i));
  spellLocked=false;
- $('s-clue').textContent=emojiFor(spWord.en)+' 「 '+spWord.cn+' 」的英文是？';
+ {const c=$('s-clue');c.innerHTML='';c.appendChild(wordMediaNode(spWord.en));c.appendChild(document.createTextNode(' 「 '+spWord.cn+' 」的英文是？'));}
  $('s-feedback').textContent='';$('s-next').classList.add('hidden');
  $('s-celebrate').classList.add('hidden');
  $('s-hint').classList.remove('hidden');
@@ -1470,7 +1490,7 @@ function startSpell(){spellDrill=null; spMode='type'; // 独立拼写闯关：�
 function showSpell(keepMode){spWord=spellQueue[spellIdx];spellLetters=spWord.en.split('');
  spInput=[];spKeys=spellLetters.map((_,i)=>i);
  spellLocked=false;
- $('s-clue').textContent=emojiFor(spWord.en)+' 「 '+spWord.cn+' 」的英文是？';
+ {const c=$('s-clue');c.innerHTML='';c.appendChild(wordMediaNode(spWord.en));c.appendChild(document.createTextNode(' 「 '+spWord.cn+' 」的英文是？'));}
  $('s-feedback').textContent='';$('s-next').classList.add('hidden');
  $('s-celebrate').classList.add('hidden');
  $('s-hint').classList.remove('hidden');
@@ -1672,7 +1692,7 @@ function battleSetWord(w){
  battleClearInk();
  battleShowCands([]);
  $('bt-typing').value='';
- $('bt-cn').textContent=emojiFor(w.en)+' '+w.cn;
+ {const c=$('bt-cn');c.innerHTML='';c.appendChild(wordMediaNode(w.en));c.appendChild(document.createTextNode(' '+w.cn));}
  $('bt-round').textContent='背对 '+btStreak+' / '+BT_NEED+' 个即可打败怪兽';
  $('bt-feedback').textContent='';
  battleRenderSlots();
